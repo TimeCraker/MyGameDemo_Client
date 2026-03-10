@@ -15,7 +15,7 @@ public class NetManager : MonoBehaviour
 
     [Header("网络配置")]
     [Tooltip("贴入你最新的 Token")]
-    public string serverUrl = "ws://localhost:8081/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJleHAiOjE3NzMzOTA1ODUsImlhdCI6MTc3MzEzMTM4NX0.ZaHYoUoCuql_3qkbgMOBopaT0TWXW2pCX5meG_bwV-8";
+    public string serverUrl = "ws://localhost:8081/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJleHAiOjE3NzMzOTg3MDgsImlhdCI6MTc3MzEzOTUwOH0.cymhm_pUa76scNDr7o7D00sOJKGSWvUA35demPMITvQ";
 
     [Tooltip("你当前登录的玩家ID，用于过滤自己的广播")]
     public uint myUserId = 1;
@@ -121,39 +121,14 @@ public class NetManager : MonoBehaviour
         // 处理玩家移动消息
         if (msg.Type == "move")
         {
-            uint incomingId = msg.UserId;
-
-            // 忽略自己发出的广播，避免自己的方块鬼畜
-            if (incomingId == myUserId) return;
-
-            Vector3 newPos = new Vector3(msg.X, msg.Y, msg.Z);
-
-            // 如果字典里没有这个玩家，就当场捏一个新方块出来
-            if (!otherPlayers.ContainsKey(incomingId))
-            {
-                GameObject newPlayer = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                newPlayer.name = $"Player_{incomingId}";
-
-                // 【修复】指定 UnityEngine.Random 以消除 CS0104 歧义，并基于 ID 生成唯一颜色
-                Renderer renderer = newPlayer.GetComponent<Renderer>();
-                UnityEngine.Random.InitState((int)incomingId);
-                renderer.material.color = UnityEngine.Random.ColorHSV(0f, 1f, 0.8f, 1f, 0.8f, 1f);
-
-                newPlayer.transform.position = newPos;
-
-                otherPlayers.Add(incomingId, newPlayer);
-                // 【新增】初始化目标位置字典
-                otherPlayerTargets.Add(incomingId, newPos);
-
-                Debug.Log($"👤 发现新玩家入场: ID {incomingId}");
-            }
-            else
-            {
-                // 【修改】不再直接瞬移，而是更新目标位置字典，让 Update 里的 MoveTowards 处理平滑移动
-                otherPlayerTargets[incomingId] = newPos;
-            }
+            HandleSingleMove(msg);
         }
-        // 【关键修复】将 logout 逻辑移出 move 分支，现在它可以被正常触发处理
+        // 【新增功能】处理初次进入游戏时的全员位置初始化
+        else if (msg.Type == "init_players")
+        {
+            HandleInitPlayers(msg);
+        }
+        // 处理玩家下线逻辑
         else if (msg.Type == "logout")
         {
             uint logoutId = msg.UserId;
@@ -168,6 +143,62 @@ public class NetManager : MonoBehaviour
                 Debug.Log($"👋 玩家 {logoutId} 已离开游戏，已清理对应模型。");
             }
         }
+    }
+
+    // 【抽离】处理单个玩家移动的消息逻辑
+    private void HandleSingleMove(GameMessage msg)
+    {
+        uint incomingId = msg.UserId;
+        if (incomingId == myUserId) return;
+
+        Vector3 newPos = new Vector3(msg.X, msg.Y, msg.Z);
+
+        if (!otherPlayers.ContainsKey(incomingId))
+        {
+            CreateNewPlayer(incomingId, newPos);
+        }
+        else
+        {
+            otherPlayerTargets[incomingId] = newPos;
+        }
+    }
+
+    // 【新增】处理批量玩家初始化的逻辑
+    private void HandleInitPlayers(GameMessage msg)
+    {
+        Debug.Log($"同步中：收到服务器发来的 {msg.Players.Count} 个在线玩家位置");
+        foreach (var p in msg.Players)
+        {
+            // 排除掉自己，因为自己已经存在于场景中了
+            if (p.UserId == myUserId) continue;
+
+            Vector3 pos = new Vector3(p.X, p.Y, p.Z);
+            if (!otherPlayers.ContainsKey(p.UserId))
+            {
+                CreateNewPlayer(p.UserId, pos);
+            }
+            else
+            {
+                otherPlayerTargets[p.UserId] = pos;
+            }
+        }
+    }
+
+    // 【抽离】统一的创建新玩家物体逻辑
+    private void CreateNewPlayer(uint id, Vector3 pos)
+    {
+        GameObject newPlayer = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        newPlayer.name = $"Player_{id}";
+
+        // 【修复】指定 UnityEngine.Random 以消除 CS0104 歧义，并基于 ID 生成唯一颜色
+        Renderer renderer = newPlayer.GetComponent<Renderer>();
+        UnityEngine.Random.InitState((int)id);
+        renderer.material.color = UnityEngine.Random.ColorHSV(0f, 1f, 0.8f, 1f, 0.8f, 1f);
+
+        newPlayer.transform.position = pos;
+        otherPlayers.Add(id, newPlayer);
+        otherPlayerTargets.Add(id, pos);
+        Debug.Log($"👤 成功加载玩家模型: ID {id}");
     }
 
     public async void SendMove(float x, float y, float z)
