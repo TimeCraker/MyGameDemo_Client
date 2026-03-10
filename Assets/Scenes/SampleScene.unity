@@ -223,7 +223,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 1, z: -10}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1, y: 1, z: 2}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -240,7 +240,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f9556048697174244861e78fda15b387, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverUrl: ws://localhost:8081/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJleHAiOjE3NzMyMDgxMTcsImlhdCI6MTc3Mjk0ODkxN30.on_YOgGnaRi5VDuujh3a-48K65lcfGujJ_rDEYZJsTE
+  serverUrl: ws://localhost:8081/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJleHAiOjE3NzMzOTA1ODUsImlhdCI6MTc3MzEzMTM4NX0.ZaHYoUoCuql_3qkbgMOBopaT0TWXW2pCX5meG_bwV-8
   myUserId: 2
   moveSpeed: 5
 --- !u!1 &705507993
