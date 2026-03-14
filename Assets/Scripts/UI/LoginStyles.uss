@@ -1,113 +1,138 @@
+/* --- FILE: Assets/Scripts/UI/LoginStyles.uss --- */
+
+/*[全局背景与卡片布局，移除容易导致解析崩溃的 CSS 字体定义，改用 UI Builder 可视化挂载] */
 .background {
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    left: 0;
-    top: 0;
-    background-color: rgba(0, 0, 0, 0.4);
-    align-items: center;
-    justify-content: center;
+    width: 100%; height: 100%;
+    position: absolute; left: 0; top: 0;
+    background-color: rgba(0, 0, 0, 0.4); 
+    align-items: center; justify-content: center;
 }
 
 .card {
-    width: 500px; /* 从 420px 增加到 500px */
+    width: 500px;
     padding: 40px;
     background-color: rgb(255, 255, 255);
     border-radius: 12px; 
 }
 
+/* [放大 Logo 图片的尺寸，增强品牌视觉冲击力] */
 .logo-image {
-    width: 280px;
-    height: 95px;
+    width: 280px; 
+    height: 95px; 
     align-self: center;
     margin-bottom: 30px;
     -unity-background-scale-mode: scale-to-fit;
 }
 
 .input-field {
-    margin-bottom: 15px;
-    font-size: 15px;
+    margin-bottom: 15px; font-size: 15px;
 }
 
 .input-field > .unity-label {
-    width: 65px;
-    font-size: 14px;
-    -unity-font-style: bold;
-    color: rgb(120, 120, 120);
+    width: 65px; 
+    font-size: 14px;             
+    -unity-font-style: bold;     
+    color: rgb(120, 120, 120);   
     -unity-text-align: middle-left;
 }
 
 .input-field > .unity-base-field__input {
-    padding: 10px;
-    border-radius: 6px;
-    background-color: rgb(245, 246, 248);
-    border-color: rgb(220, 220, 220);
-    border-width: 1px;
+    padding: 10px; border-radius: 6px;
+    background-color: rgb(245, 246, 248); 
+    border-color: rgb(220, 220, 220); border-width: 1px;
 }
 
+/* [验证码内嵌核心逻辑：父相子绝] */
 .code-row {
-    flex-direction: row;
+    flex-direction: row; 
     align-items: flex-start;
     position: relative;
 }
 
 .code-input {
-    flex-grow: 1;
-    margin-right: 0;
+    flex-grow: 1; 
+    margin-right: 0; 
 }
 
 .code-input > .unity-base-field__input {
-    padding-right: 110px;
+    padding-right: 110px; 
 }
 
 .send-code-btn {
-    position: absolute;
-    right: 5px;
-    top: 3px;
-    height: 34px;
+    position: absolute; 
+    right: 5px;         
+    top: 3px;           
+    height: 34px;       
     width: 100px;
-    background-color: rgb(240, 244, 255);
+    background-color: rgb(240, 244, 255); 
     color: rgb(0, 170, 255);
-    border-radius: 4px;
-    border-width: 0;
+    border-radius: 4px; 
+    border-width: 0; 
     font-size: 13px;
     padding: 0;
 }
 
-.send-code-btn:hover {
-    background-color: rgb(220, 230, 255);
-}
+.send-code-btn:hover { background-color: rgb(220, 230, 255); }
 
 .primary-btn {
-    background-color: rgb(0, 150, 255);
-    color: rgb(255, 255, 255);
-    font-size: 16px;
-    -unity-font-style: bold;
-    padding: 12px;
-    border-radius: 6px;
-    margin-top: 20px;
+    background-color: rgb(0, 150, 255); 
+    color: rgb(255, 255, 255);   
+    font-size: 16px;             
+    -unity-font-style: bold;     
+    padding: 12px; 
+    border-radius: 6px; 
+    margin-top: 20px;            
     border-width: 0;
 }
 
-.primary-btn:hover {
-    background-color: rgb(0, 140, 210);
-}
+.primary-btn:hover { background-color: rgb(0, 140, 210); }
 
 .link-btn {
-    background-color: rgba(0, 0, 0, 0);
-    color: rgb(150, 150, 150);
-    font-size: 14px;
-    border-width: 0;
-    margin-top: 15px;
+    background-color: rgba(0,0,0,0); color: rgb(150, 150, 150);
+    font-size: 14px; border-width: 0; margin-top: 15px;
     text-decoration: underline;
 }
+.link-btn:hover { color: rgb(0, 170, 255); }
 
-.link-btn:hover {
-    color: rgb(0, 170, 255);
+.tip-text { margin-top: 15px; font-size: 14px; align-self: center; }
+
+
+/* [加载界面专属样式] */
+.loading-panel {
+    width: 600px;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    bottom: 12%; /* 将进度条放置在屏幕中下方，不遮挡视频主体 */
 }
 
-.tip-text {
-    margin-top: 15px;
-    font-size: 14px;
-    align-self: center;
+.loading-status-text {
+    color: rgb(255, 255, 255);
+    font-size: 16px;
+    margin-bottom: 12px;
+    -unity-font-style: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8); /* 增加文字阴影，防止在亮色视频背景上看不清 */
+}
+
+.progress-bg {
+    width: 100%;
+    height: 6px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+    overflow: hidden; /* 确保填充条不会超出圆角 */
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: rgb(0, 170, 255); /* Aster 品牌蓝 */
+    transition-property: width;
+    transition-duration: 0.1s; /* 让进度条涨起来更丝滑 */
+}
+
+.press-key-text {
+    color: rgb(255, 255, 255);
+    font-size: 20px;
+    margin-top: 25px;
+    -unity-font-style: bold;
+    text-shadow: 0px 0px 10px rgba(0, 170, 255, 0.8); /* 增加发光效果 */
 }

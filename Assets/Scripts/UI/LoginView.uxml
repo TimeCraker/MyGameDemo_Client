@@ -22,5 +22,12 @@
             <ui:Button name="btn-goto-login" text="已有账号？返回登录" class="link-btn" />
             <ui:Label name="tip-reg" class="tip-text" />
         </ui:VisualElement>
+        <ui:VisualElement name="panel-loading" class="loading-panel" style="display: none;">
+            <ui:Label name="text-loading-status" text="正在加载游戏配置..." class="loading-status-text" />
+            <ui:VisualElement class="progress-bg">
+                <ui:VisualElement name="progress-fill" class="progress-fill" style="width: 0%;" />
+            </ui:VisualElement>
+            <ui:Label name="text-press-key" text="- 点击任意键进入游戏 -" class="press-key-text" style="display: none;" />
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
