@@ -1,6 +1,5 @@
-// --- FILE: Assets/Scripts/UI/LoginController.cs ---
-
 using System;
+using System.Collections;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -34,6 +33,11 @@ public class LoginController : MonoBehaviour
         btnSendCode = root.Q<Button>("btn-send-code");
         btnRegister = root.Q<Button>("btn-register");
         btnGotoLogin = root.Q<Button>("btn-goto-login");
+
+        // ===== 修改代码 START =====
+        // [修复 NullReferenceException：在 OnEnable 中补上漏掉的 tipReg 元素获取逻辑]
+        tipReg = root.Q<Label>("tip-reg");
+        // ===== 修改代码 END =====
 
         btnLogin.clicked += HandleLogin;
         btnGotoReg.clicked += () => SwitchPanel(false);
@@ -78,20 +82,41 @@ public class LoginController : MonoBehaviour
 
     private void HandleSendCode()
     {
+        Debug.Log("🎯 ==== 1. 获取验证码按钮被点击了！ ====");
+
         if (string.IsNullOrEmpty(regEmail.value) || !regEmail.value.Contains("@"))
         {
+            Debug.LogWarning("⚠️ ==== 邮箱格式不对，请求被前端拦截 ====");
             ShowTip(tipReg, "请输入正确的邮箱地址！", Color.red);
             return;
         }
 
-        btnSendCode.SetEnabled(false);
+        Debug.Log("🚀 ==== 2. 邮箱验证通过，启动倒计时协程，准备呼叫 HttpManager ====");
+        StartCoroutine(CodeCountdownRoutine());
         ShowTip(tipReg, "发送中...", Color.black);
 
         HttpManager.Instance.SendEmailCode(regEmail.value, (success, msg) =>
         {
-            btnSendCode.SetEnabled(true);
+            Debug.Log($"📩 ==== 5. 收到后端回调响应！成功状态: {success}, 消息: {msg} ====");
             ShowTip(tipReg, success ? "验证码已发送至邮箱！" : "发送失败: " + msg, success ? new Color(0, 0.6f, 0) : Color.red);
         });
+    }
+
+    private IEnumerator CodeCountdownRoutine()
+    {
+        btnSendCode.SetEnabled(false); // 变灰不可点击
+        int countdown = 60;
+
+        while (countdown > 0)
+        {
+            btnSendCode.text = $"{countdown}s"; // 动态更新文字
+            yield return new WaitForSeconds(1f); // 挂起 1 秒
+            countdown--;
+        }
+
+        // 倒计时结束，恢复原状
+        btnSendCode.text = "获取验证码";
+        btnSendCode.SetEnabled(true);
     }
 
     private void HandleRegister()

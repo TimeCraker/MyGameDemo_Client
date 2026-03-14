@@ -2,7 +2,7 @@
     <Style src="project://database/Assets/Scripts/UI/LoginStyles.uss?fileID=7433441132597879392&amp;guid=92b6b44da3cee41498138619bbb1a976&amp;type=3#LoginStyles" />
     <ui:VisualElement name="VisualElement" class="background" style="-unity-font: url(&quot;project://database/Assets/UI%20Toolkit/UnityThemes/MSYH.TTC?fileID=12800000&amp;guid=3f8f83180427509468e35ad8f4dcbb81&amp;type=3#MSYH&quot;); -unity-font-definition: url(&quot;project://database/Assets/UI%20Toolkit/UnityThemes/MSYH%20SDF%201.asset?fileID=11400000&amp;guid=82dcf75849cfb6c48a8edbe7275c0d6a&amp;type=2#MSYH SDF 1&quot;);">
         <ui:VisualElement name="panel-login" class="card">
-            <ui:Label text="Aster" class="logo-text" />
+            <ui:VisualElement class="logo-image" style="background-image: url(&quot;project://database/Assets/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-03-14%20115017.png?fileID=2800000&amp;guid=0455d93f809ca184698001a1be75f66a&amp;type=3#屏幕截图 2026-03-14 115017&quot;);" />
             <ui:TextField name="login-user" label="用户名" class="input-field" />
             <ui:TextField name="login-pass" label="密 码" password="true" class="input-field" />
             <ui:Button name="btn-login" text="登 录" class="primary-btn" />
@@ -10,7 +10,7 @@
             <ui:Label name="tip-login" class="tip-text" />
         </ui:VisualElement>
         <ui:VisualElement name="panel-register" class="card" style="display: none;">
-            <ui:Label text="加入 Aster" class="logo-text" />
+            <ui:VisualElement class="logo-image" style="background-image: url(&quot;project://database/Assets/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-03-14%20115017.png?fileID=2800000&amp;guid=0455d93f809ca184698001a1be75f66a&amp;type=3#屏幕截图 2026-03-14 115017&quot;);" />
             <ui:TextField name="reg-email" label="邮 箱" class="input-field" />
             <ui:VisualElement class="code-row">
                 <ui:TextField name="reg-code" label="验证码" class="input-field code-input" />

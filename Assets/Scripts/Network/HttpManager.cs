@@ -1,19 +1,16 @@
-// --- FILE: Assets/Scripts/Network/HttpManager.cs ---
-
 using System;
 using System.Collections;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
-// ===== 新增代码 START =====
-// [HTTP 网络请求管理类，负责与 Go 后端的 /api/v1 接口交互]
 public class HttpManager : MonoBehaviour
 {
     public static HttpManager Instance;
 
     [Header("服务器配置")]
-    public string httpBaseUrl = "http://localhost:8081/api/v1";
+    // [直接写死 127.0.0.1，防止 Unity 面板覆盖导致 localhost 解析失败]
+    public string httpBaseUrl = "http://127.0.0.1:8081/api/v1";
 
     private void Awake()
     {
@@ -29,10 +26,11 @@ public class HttpManager : MonoBehaviour
     [Serializable] public class LoginRes { public string message; public string token; }
     [Serializable] public class ErrorRes { public string error; }
 
-    // 1. 发送邮箱验证码
+    // 1. 发送邮箱验证码 (带雷达日志)
     public void SendEmailCode(string email, Action<bool, string> callback)
     {
         string json = JsonUtility.ToJson(new EmailReq { email = email });
+        Debug.Log($"📡 ==== 3. HttpManager 开始组装发信请求，目标 URL: {httpBaseUrl}/send-code ====");
         StartCoroutine(PostRequest($"{httpBaseUrl}/send-code", json, callback));
     }
 
@@ -51,11 +49,8 @@ public class HttpManager : MonoBehaviour
         {
             if (success)
             {
-                // 解析后端返回的 Token
                 LoginRes res = JsonUtility.FromJson<LoginRes>(responseData);
-                // 注意：目前后端 Login 接口未返回 UserID，前端暂用 0 替代，或后续让后端加上
-                // 为了不修改后端，我们先缓存 Token，UserID 稍后通过 /api/me 获取或在 NetManager 中处理
-                DataManager.SaveLoginData(res.token, 0); 
+                DataManager.SaveLoginData(res.token, 0);
                 callback(true, "登录成功");
             }
             else
@@ -65,7 +60,7 @@ public class HttpManager : MonoBehaviour
         }));
     }
 
-    // 底层 POST 请求协程
+    // 底层 POST 请求协程 (带雷达日志)
     private IEnumerator PostRequest(string url, string jsonBody, Action<bool, string> callback)
     {
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
@@ -79,11 +74,12 @@ public class HttpManager : MonoBehaviour
 
             if (request.result == UnityWebRequest.Result.Success)
             {
+                Debug.Log($"✅ ==== 4. HTTP 请求成功送达！后端返回: {request.downloadHandler.text} ====");
                 callback(true, request.downloadHandler.text);
             }
             else
             {
-                // 尝试解析后端的自定义错误信息 {"error": "..."}
+                Debug.LogError($"❌ ==== 4. HTTP 请求发生致命错误: {request.error} ====");
                 string errorMsg = request.error;
                 try
                 {
@@ -91,13 +87,13 @@ public class HttpManager : MonoBehaviour
                     if (errRes != null && !string.IsNullOrEmpty(errRes.error))
                     {
                         errorMsg = errRes.error;
+                        Debug.LogError($"❌ ==== 后端附加的详细错误: {errorMsg} ====");
                     }
                 }
                 catch { /* 解析失败则使用默认网络错误 */ }
-                
+
                 callback(false, errorMsg);
             }
         }
     }
 }
-// ===== 新增代码 END =====
