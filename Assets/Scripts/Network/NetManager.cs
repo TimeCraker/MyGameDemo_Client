@@ -17,16 +17,18 @@ public class NetManager : MonoBehaviour
     [Header("网络配置")]
     [Tooltip("WebSocket 基础地址")]
     public string baseWsUrl = "ws://localhost:8081/ws";
-
     [Tooltip("当前登录的玩家ID (将由 DataManager 动态赋值)")]
     public uint myUserId = 0;
 
-    // ===== 新增代码 START =====
-    // [用于控制 3D 游戏场景的显隐，避免在登录界面穿模显示]
+    // ===== 修改代码 START =====
+    // [引入动态预制体加载机制，取代原有的强引用，彻底实现 UI 与场景解耦]
     [Header("场景控制")]
-    [Tooltip("把场景里的 Ground 和 PlayerObject 打包放在一个空物体下，拖到这里")]
-    public GameObject gameEnvironment;
-    // ===== 新增代码 END =====
+    [Tooltip("请将包含了 Ground 和其他静态环境的 3D 环境打包成 Prefab 拖到这里，并从当前场景中删除它")]
+    public GameObject gameWorldPrefab;
+
+    // 运行时的场景实例缓存
+    private GameObject _currentEnvironment;
+    // ===== 修改代码 END =====
 
     [Header("移动设置")]
     public float moveSpeed = 5f;
@@ -47,13 +49,9 @@ public class NetManager : MonoBehaviour
         targetPosition = transform.position;
         Debug.Log("💤 NetManager 已就绪，等待玩家登录...");
 
-        // ===== 新增代码 START =====
-        // [启动时隐藏 3D 游戏环境，只显示带有视频背景的 UI]
-        if (gameEnvironment != null)
-        {
-            gameEnvironment.SetActive(false);
-        }
-        // ===== 新增代码 END =====
+        // ===== 修改代码 START =====
+        // [移除了隐藏 gameEnvironment 的逻辑，因为初始登录场景中根本就不该有 3D 场景]
+        // ===== 修改代码 END =====
     }
 
     public async void ConnectToServer()
@@ -68,7 +66,6 @@ public class NetManager : MonoBehaviour
         string finalUrl = $"{baseWsUrl}?token={DataManager.Token}";
 
         _socket = new ClientWebSocket();
-
         try
         {
             Debug.Log($"🌐 正在连接游戏大厅 (玩家ID: {myUserId})...");
@@ -81,13 +78,18 @@ public class NetManager : MonoBehaviour
             {
                 Debug.Log("✅ 成功连接至 Go 后端大厅！");
 
-                // ===== 新增代码 START =====
-                // [连接成功后，显示 3D 游戏环境，正式开始游戏]
-                if (gameEnvironment != null)
+                // ===== 修改代码 START =====
+                // [连接成功后，动态实例化 3D 游戏世界预制体，正式开始游戏渲染]
+                if (gameWorldPrefab != null && _currentEnvironment == null)
                 {
-                    gameEnvironment.SetActive(true);
+                    _currentEnvironment = Instantiate(gameWorldPrefab);
+                    Debug.Log("🌍 3D 游戏世界已动态加载完成！");
                 }
-                // ===== 新增代码 END =====
+                else if (gameWorldPrefab == null)
+                {
+                    Debug.LogWarning("⚠️ 尚未配置 gameWorldPrefab，场景将处于虚空状态！");
+                }
+                // ===== 修改代码 END =====
 
                 _ = ReceiveLoop();
                 SendMove(transform.position.x, transform.position.y, transform.position.z);
@@ -101,10 +103,10 @@ public class NetManager : MonoBehaviour
 
     void Update()
     {
-        // ===== 新增代码 START =====
-        // [终极拦截：如果 WebSocket 没连上，绝对不允许处理任何游戏内的鼠标点击和移动逻辑！]
-        if (_socket == null || _socket.State != WebSocketState.Open) return;
-        // ===== 新增代码 END =====
+        // ===== 修改代码 START =====
+        // [终极拦截：不仅要判断网络，还要判断场景是否已加载完毕，否则绝对不允许处理游戏内射线和交互！]
+        if (_socket == null || _socket.State != WebSocketState.Open || _currentEnvironment == null) return;
+        // ===== 修改代码 END =====
 
         while (messageQueue.TryDequeue(out GameMessage msg))
         {
@@ -117,7 +119,6 @@ public class NetManager : MonoBehaviour
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
                 targetPosition = new Vector3(hit.point.x, transform.position.y, hit.point.z);
-
                 if (_socket != null && _socket.State == WebSocketState.Open)
                 {
                     SendMove(targetPosition.x, targetPosition.y, targetPosition.z);
@@ -178,7 +179,6 @@ public class NetManager : MonoBehaviour
         if (incomingId == myUserId) return;
 
         Vector3 newPos = new Vector3(msg.X, msg.Y, msg.Z);
-
         if (!otherPlayers.ContainsKey(incomingId))
         {
             CreateNewPlayer(incomingId, newPos);
@@ -195,7 +195,6 @@ public class NetManager : MonoBehaviour
         foreach (var p in msg.Players)
         {
             if (p.UserId == myUserId) continue;
-
             Vector3 pos = new Vector3(p.X, p.Y, p.Z);
             if (!otherPlayers.ContainsKey(p.UserId))
             {
