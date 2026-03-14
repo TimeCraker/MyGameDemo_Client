@@ -1,0 +1,124 @@
+﻿Folder PATH listing
+Volume serial number is B85E-49CE
+C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
+|   GroundMat.mat
+|   GroundMat.mat.meta
+|   Plugins.meta
+|   Scenes.meta
+|   Scripts.meta
+|   TextMesh Pro.meta
+|   
++---Plugins
+|       Google.Protobuf.dll
+|       Google.Protobuf.dll.meta
+|       System.Runtime.CompilerServices.Unsafe.dll
+|       System.Runtime.CompilerServices.Unsafe.dll.meta
+|       
++---Scenes
+|   |   New Folder.meta
+|   |   SampleScene.unity
+|   |   SampleScene.unity.meta
+|   |   
+|   \---New Folder
++---Scripts
+|   |   Network.meta
+|   |   Proto.meta
+|   |   
+|   +---Network
+|   |       NetManager.cs
+|   |       NetManager.cs.meta
+|   |       
+|   \---Proto
+|           Game.cs
+|           Game.cs.meta
+|           
+\---TextMesh Pro
+    |   Documentation.meta
+    |   Fonts.meta
+    |   Resources.meta
+    |   Shaders.meta
+    |   Sprites.meta
+    |   
+    +---Documentation
+    |       TextMesh Pro User Guide 2016.pdf
+    |       TextMesh Pro User Guide 2016.pdf.meta
+    |       
+    +---Fonts
+    |       LiberationSans - OFL.txt
+    |       LiberationSans - OFL.txt.meta
+    |       LiberationSans.ttf
+    |       LiberationSans.ttf.meta
+    |       
+    +---Resources
+    |   |   Fonts & Materials.meta
+    |   |   LineBreaking Following Characters.txt
+    |   |   LineBreaking Following Characters.txt.meta
+    |   |   LineBreaking Leading Characters.txt
+    |   |   LineBreaking Leading Characters.txt.meta
+    |   |   Sprite Assets.meta
+    |   |   Style Sheets.meta
+    |   |   TMP Settings.asset
+    |   |   TMP Settings.asset.meta
+    |   |   
+    |   +---Fonts & Materials
+    |   |       LiberationSans SDF - Drop Shadow.mat
+    |   |       LiberationSans SDF - Drop Shadow.mat.meta
+    |   |       LiberationSans SDF - Fallback.asset
+    |   |       LiberationSans SDF - Fallback.asset.meta
+    |   |       LiberationSans SDF - Outline.mat
+    |   |       LiberationSans SDF - Outline.mat.meta
+    |   |       LiberationSans SDF.asset
+    |   |       LiberationSans SDF.asset.meta
+    |   |       
+    |   +---Sprite Assets
+    |   |       EmojiOne.asset
+    |   |       EmojiOne.asset.meta
+    |   |       
+    |   \---Style Sheets
+    |           Default Style Sheet.asset
+    |           Default Style Sheet.asset.meta
+    |           
+    +---Shaders
+    |       TMPro.cginc
+    |       TMPro.cginc.meta
+    |       TMPro_Mobile.cginc
+    |       TMPro_Mobile.cginc.meta
+    |       TMPro_Properties.cginc
+    |       TMPro_Properties.cginc.meta
+    |       TMPro_Surface.cginc
+    |       TMPro_Surface.cginc.meta
+    |       TMP_Bitmap-Custom-Atlas.shader
+    |       TMP_Bitmap-Custom-Atlas.shader.meta
+    |       TMP_Bitmap-Mobile.shader
+    |       TMP_Bitmap-Mobile.shader.meta
+    |       TMP_Bitmap.shader
+    |       TMP_Bitmap.shader.meta
+    |       TMP_SDF Overlay.shader
+    |       TMP_SDF Overlay.shader.meta
+    |       TMP_SDF SSD.shader
+    |       TMP_SDF SSD.shader.meta
+    |       TMP_SDF-Mobile Masking.shader
+    |       TMP_SDF-Mobile Masking.shader.meta
+    |       TMP_SDF-Mobile Overlay.shader
+    |       TMP_SDF-Mobile Overlay.shader.meta
+    |       TMP_SDF-Mobile SSD.shader
+    |       TMP_SDF-Mobile SSD.shader.meta
+    |       TMP_SDF-Mobile.shader
+    |       TMP_SDF-Mobile.shader.meta
+    |       TMP_SDF-Surface-Mobile.shader
+    |       TMP_SDF-Surface-Mobile.shader.meta
+    |       TMP_SDF-Surface.shader
+    |       TMP_SDF-Surface.shader.meta
+    |       TMP_SDF.shader
+    |       TMP_SDF.shader.meta
+    |       TMP_Sprite.shader
+    |       TMP_Sprite.shader.meta
+    |       
+    \---Sprites
+            EmojiOne Attribution.txt
+            EmojiOne Attribution.txt.meta
+            EmojiOne.json
+            EmojiOne.json.meta
+            EmojiOne.png
+            EmojiOne.png.meta
+            

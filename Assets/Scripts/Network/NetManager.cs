@@ -10,51 +10,85 @@ using System.Collections.Generic;
 
 public class NetManager : MonoBehaviour
 {
-    private static NetManager _instance;
+    public static NetManager Instance { get; private set; }
+
     private ClientWebSocket _socket;
 
     [Header("网络配置")]
-    [Tooltip("贴入你最新的 Token")]
-    public string serverUrl = "ws://localhost:8081/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJleHAiOjE3NzMzOTg3MDgsImlhdCI6MTc3MzEzOTUwOH0.cymhm_pUa76scNDr7o7D00sOJKGSWvUA35demPMITvQ";
+    [Tooltip("WebSocket 基础地址")]
+    public string baseWsUrl = "ws://localhost:8081/ws";
 
-    [Tooltip("你当前登录的玩家ID，用于过滤自己的广播")]
-    public uint myUserId = 1;
+    [Tooltip("当前登录的玩家ID (将由 DataManager 动态赋值)")]
+    public uint myUserId = 0;
+
+    // ===== 新增代码 START =====
+    // [用于控制 3D 游戏场景的显隐，避免在登录界面穿模显示]
+    [Header("场景控制")]
+    [Tooltip("把场景里的 Ground 和 PlayerObject 打包放在一个空物体下，拖到这里")]
+    public GameObject gameEnvironment;
+    // ===== 新增代码 END =====
 
     [Header("移动设置")]
     public float moveSpeed = 5f;
     private Vector3 targetPosition;
 
-    // 存放其他玩家的字典 (Key: 玩家ID, Value: 对应的方块物体)
     private Dictionary<uint, GameObject> otherPlayers = new Dictionary<uint, GameObject>();
-
-    // 【新增】存放其他玩家的目标坐标 (用于平滑移动)
     private Dictionary<uint, Vector3> otherPlayerTargets = new Dictionary<uint, Vector3>();
-
-    // 线程安全队列，用于把后台收到的网络消息丢给主线程处理
     private ConcurrentQueue<GameMessage> messageQueue = new ConcurrentQueue<GameMessage>();
 
     private void Awake()
     {
-        if (_instance != null && _instance != this) { Destroy(this); return; }
-        _instance = this;
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
     }
 
-    async void Start()
+    void Start()
     {
         targetPosition = transform.position;
+        Debug.Log("💤 NetManager 已就绪，等待玩家登录...");
+
+        // ===== 新增代码 START =====
+        // [启动时隐藏 3D 游戏环境，只显示带有视频背景的 UI]
+        if (gameEnvironment != null)
+        {
+            gameEnvironment.SetActive(false);
+        }
+        // ===== 新增代码 END =====
+    }
+
+    public async void ConnectToServer()
+    {
+        if (!DataManager.IsLoggedIn())
+        {
+            Debug.LogError("❌ 尚未登录，无法连接 WebSocket！");
+            return;
+        }
+
+        myUserId = DataManager.MyUserId;
+        string finalUrl = $"{baseWsUrl}?token={DataManager.Token}";
+
         _socket = new ClientWebSocket();
 
         try
         {
-            Debug.Log("🌐 正在连接服务器...");
+            Debug.Log($"🌐 正在连接游戏大厅 (玩家ID: {myUserId})...");
             using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             {
-                await _socket.ConnectAsync(new Uri(serverUrl), cts.Token);
+                await _socket.ConnectAsync(new Uri(finalUrl), cts.Token);
             }
 
             if (_socket.State == WebSocketState.Open)
             {
-                Debug.Log("✅ 成功连接至 Go 后端！");
+                Debug.Log("✅ 成功连接至 Go 后端大厅！");
+
+                // ===== 新增代码 START =====
+                // [连接成功后，显示 3D 游戏环境，正式开始游戏]
+                if (gameEnvironment != null)
+                {
+                    gameEnvironment.SetActive(true);
+                }
+                // ===== 新增代码 END =====
+
                 _ = ReceiveLoop();
                 SendMove(transform.position.x, transform.position.y, transform.position.z);
             }
@@ -67,22 +101,23 @@ public class NetManager : MonoBehaviour
 
     void Update()
     {
-        // 1. 处理网络队列里的消息 (主线程中执行)
+        // ===== 新增代码 START =====
+        // [终极拦截：如果 WebSocket 没连上，绝对不允许处理任何游戏内的鼠标点击和移动逻辑！]
+        if (_socket == null || _socket.State != WebSocketState.Open) return;
+        // ===== 新增代码 END =====
+
         while (messageQueue.TryDequeue(out GameMessage msg))
         {
             ProcessNetworkMessage(msg);
         }
 
-        // 2. 鼠标点击地面移动 (射线检测)
         if (Input.GetMouseButtonDown(0))
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
-                // 确保点到的是地面，而不是天上
                 targetPosition = new Vector3(hit.point.x, transform.position.y, hit.point.z);
 
-                // 给后端发消息
                 if (_socket != null && _socket.State == WebSocketState.Open)
                 {
                     SendMove(targetPosition.x, targetPosition.y, targetPosition.z);
@@ -90,62 +125,53 @@ public class NetManager : MonoBehaviour
             }
         }
 
-        // 3. 自己方块的平滑移动
         if (Vector3.Distance(transform.position, targetPosition) > 0.01f)
         {
             transform.position = Vector3.MoveTowards(transform.position, targetPosition, moveSpeed * Time.deltaTime);
-            // 【修改】根据反馈，删除了看向移动方向的 LookAt 代码
         }
 
-        // 4. 其他玩家方块的平滑移动
         foreach (var kvp in otherPlayers)
         {
             uint id = kvp.Key;
             GameObject otherCube = kvp.Value;
 
-            // 【修改】从目标位置字典获取坐标，实现平滑滑行
             if (otherPlayerTargets.TryGetValue(id, out Vector3 targetPos))
             {
                 if (Vector3.Distance(otherCube.transform.position, targetPos) > 0.01f)
                 {
                     otherCube.transform.position = Vector3.MoveTowards(otherCube.transform.position, targetPos, moveSpeed * Time.deltaTime);
-                    // 【修改】根据反馈，删除了看向移动方向的 LookAt 代码
                 }
             }
         }
     }
 
-    // 处理解析好的 Protobuf 消息
     private void ProcessNetworkMessage(GameMessage msg)
     {
-        // 处理玩家移动消息
         if (msg.Type == "move")
         {
             HandleSingleMove(msg);
         }
-        // 【新增功能】处理初次进入游戏时的全员位置初始化
         else if (msg.Type == "init_players")
         {
             HandleInitPlayers(msg);
         }
-        // 处理玩家下线逻辑
+        else if (msg.Type == "chat")
+        {
+            Debug.Log($"💬 [玩家 {msg.UserId}]: {msg.Content}");
+        }
         else if (msg.Type == "logout")
         {
             uint logoutId = msg.UserId;
             if (otherPlayers.ContainsKey(logoutId))
             {
-                // 1. 销毁场景里的物体
                 Destroy(otherPlayers[logoutId]);
-                // 2. 从字典里移除记录
                 otherPlayers.Remove(logoutId);
                 otherPlayerTargets.Remove(logoutId);
-
                 Debug.Log($"👋 玩家 {logoutId} 已离开游戏，已清理对应模型。");
             }
         }
     }
 
-    // 【抽离】处理单个玩家移动的消息逻辑
     private void HandleSingleMove(GameMessage msg)
     {
         uint incomingId = msg.UserId;
@@ -163,13 +189,11 @@ public class NetManager : MonoBehaviour
         }
     }
 
-    // 【新增】处理批量玩家初始化的逻辑
     private void HandleInitPlayers(GameMessage msg)
     {
         Debug.Log($"同步中：收到服务器发来的 {msg.Players.Count} 个在线玩家位置");
         foreach (var p in msg.Players)
         {
-            // 排除掉自己，因为自己已经存在于场景中了
             if (p.UserId == myUserId) continue;
 
             Vector3 pos = new Vector3(p.X, p.Y, p.Z);
@@ -184,21 +208,36 @@ public class NetManager : MonoBehaviour
         }
     }
 
-    // 【抽离】统一的创建新玩家物体逻辑
     private void CreateNewPlayer(uint id, Vector3 pos)
     {
         GameObject newPlayer = GameObject.CreatePrimitive(PrimitiveType.Cube);
         newPlayer.name = $"Player_{id}";
 
-        // 【修复】指定 UnityEngine.Random 以消除 CS0104 歧义，并基于 ID 生成唯一颜色
         Renderer renderer = newPlayer.GetComponent<Renderer>();
         UnityEngine.Random.InitState((int)id);
         renderer.material.color = UnityEngine.Random.ColorHSV(0f, 1f, 0.8f, 1f, 0.8f, 1f);
 
         newPlayer.transform.position = pos;
+        CreateNameTag(newPlayer, $"Player {id}");
+
         otherPlayers.Add(id, newPlayer);
         otherPlayerTargets.Add(id, pos);
         Debug.Log($"👤 成功加载玩家模型: ID {id}");
+    }
+
+    private void CreateNameTag(GameObject parent, string name)
+    {
+        GameObject textObj = new GameObject("NameTag");
+        textObj.transform.SetParent(parent.transform);
+        textObj.transform.localPosition = new Vector3(0, 1.2f, 0);
+
+        TextMesh tm = textObj.AddComponent<TextMesh>();
+        tm.text = name;
+        tm.fontSize = 20;
+        tm.alignment = TextAlignment.Center;
+        tm.anchor = TextAnchor.MiddleCenter;
+        tm.characterSize = 0.1f;
+        tm.color = Color.white;
     }
 
     public async void SendMove(float x, float y, float z)
@@ -223,7 +262,6 @@ public class NetManager : MonoBehaviour
                 var result = await _socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
                 if (result.MessageType == WebSocketMessageType.Binary)
                 {
-                    // 解析 Protobuf，并塞进队列给主线程处理
                     GameMessage incoming = GameMessage.Parser.ParseFrom(buffer, 0, result.Count);
                     messageQueue.Enqueue(incoming);
                 }

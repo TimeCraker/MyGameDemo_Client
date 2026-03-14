@@ -1,0 +1,26 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/Scripts/UI/LoginStyles.uss?fileID=7433441132597879392&amp;guid=92b6b44da3cee41498138619bbb1a976&amp;type=3#LoginStyles" />
+    <ui:VisualElement name="VisualElement" class="background" style="-unity-font: url(&quot;project://database/Assets/UI%20Toolkit/UnityThemes/MSYH.TTC?fileID=12800000&amp;guid=3f8f83180427509468e35ad8f4dcbb81&amp;type=3#MSYH&quot;); -unity-font-definition: url(&quot;project://database/Assets/UI%20Toolkit/UnityThemes/MSYH%20SDF%201.asset?fileID=11400000&amp;guid=82dcf75849cfb6c48a8edbe7275c0d6a&amp;type=2#MSYH SDF 1&quot;);">
+        <ui:VisualElement name="panel-login" class="card">
+            <ui:Label text="Aster" class="logo-text" />
+            <ui:TextField name="login-user" label="用户名" class="input-field" />
+            <ui:TextField name="login-pass" label="密 码" password="true" class="input-field" />
+            <ui:Button name="btn-login" text="登 录" class="primary-btn" />
+            <ui:Button name="btn-goto-reg" text="没有账号？立即注册" class="link-btn" />
+            <ui:Label name="tip-login" class="tip-text" />
+        </ui:VisualElement>
+        <ui:VisualElement name="panel-register" class="card" style="display: none;">
+            <ui:Label text="加入 Aster" class="logo-text" />
+            <ui:TextField name="reg-email" label="邮 箱" class="input-field" />
+            <ui:VisualElement class="code-row">
+                <ui:TextField name="reg-code" label="验证码" class="input-field code-input" />
+                <ui:Button name="btn-send-code" text="获取验证码" class="send-code-btn" />
+            </ui:VisualElement>
+            <ui:TextField name="reg-user" label="用户名" class="input-field" />
+            <ui:TextField name="reg-pass" label="密 码" password="true" class="input-field" />
+            <ui:Button name="btn-register" text="注 册" class="primary-btn" />
+            <ui:Button name="btn-goto-login" text="已有账号？返回登录" class="link-btn" />
+            <ui:Label name="tip-reg" class="tip-text" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
