@@ -1,0 +1,29 @@
+.fullscreen { width: 100%; height: 100%; justify-content: space-between; }
+.layer-container { position: absolute; width: 100%; height: 100%; }
+
+/* --- 玩家名片 --- */
+.profile-box { flex-direction: row; align-items: center; margin: 30px; }
+.avatar-placeholder { width: 64px; height: 64px; border-radius: 32px; background-color: rgb(80, 80, 80); border-width: 2px; border-color: rgb(255, 182, 193); margin-right: 15px; }
+.team-tag { color: rgb(255, 182, 193); font-size: 12px; -unity-font-style: italic; margin-bottom: -2px; }
+.username { color: white; font-size: 24px; -unity-font-style: bold; }
+
+/* --- 底部模式选择 --- */
+.bottom-bar { position: absolute; bottom: 40px; width: 100%; flex-direction: row; justify-content: center; align-items: flex-end; }
+.mode-btn { background-color: rgba(20, 25, 30, 0.9); border-width: 1px; border-color: rgba(255,255,255,0.2); border-radius: 8px; color: white; -unity-font-style: bold; margin: 0 10px; transition-property: scale; transition-duration: 0.1s; }
+.mode-btn:hover { scale: 1.05; background-color: rgba(40, 45, 55, 0.9); }
+.big-btn { width: 200px; height: 80px; font-size: 18px; }
+.mid-btn { width: 140px; height: 60px; font-size: 16px; }
+.small-btn { width: 100px; height: 50px; font-size: 14px; }
+.accent-btn { background-image: linear-gradient(to right, rgb(255, 182, 193), rgb(155, 89, 182)); border-width: 0; }
+
+/* --- 侧边栏与选角面板 --- */
+.side-btn { position: absolute; right: 40px; top: 40px; width: 120px; height: 60px; background-color: rgba(20, 25, 30, 0.9); color: white; font-size: 14px; border-radius: 8px; border-color: rgba(255, 182, 193, 0.5); border-width: 1px;}
+.side-btn:hover { background-color: rgba(255, 182, 193, 0.2); }
+
+.roster-overlay { background-color: rgba(0, 0, 0, 0.7); justify-content: center; align-items: flex-end; }
+.roster-panel { width: 350px; height: 80%; background-color: rgb(15, 15, 18); margin-right: 40px; border-radius: 12px; padding: 20px; border-left-width: 3px; border-left-color: rgb(155, 89, 182); justify-content: space-between;}
+.roster-title { color: white; font-size: 22px; -unity-font-style: bold; margin-bottom: 20px; }
+.role-select-btn { height: 60px; margin-bottom: 10px; background-color: rgb(30, 30, 35); color: white; font-size: 16px; border-width: 0; border-radius: 6px; }
+.role-select-btn:hover { background-color: rgb(50, 50, 60); }
+.deploy-btn { height: 60px; background-image: linear-gradient(to right, rgb(255, 182, 193), rgb(155, 89, 182)); color: white; font-size: 20px; -unity-font-style: bold; border-width: 0; border-radius: 8px; }
+.deploy-btn:hover { scale: 1.02; }

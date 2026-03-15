@@ -3,6 +3,8 @@ Volume serial number is B85E-49CE
 C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |   75.mp4
 |   75.mp4.meta
+|   GameEnvironment_Prefab.prefab
+|   GameEnvironment_Prefab.prefab.meta
 |   GroundMat.mat
 |   GroundMat.mat.meta
 |   PanelTextSettings.asset
@@ -12,6 +14,8 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |   Scripts.meta
 |   TextMesh Pro.meta
 |   UI Toolkit.meta
+|   ��Ļ��ͼ 2026-03-14 115017.png
+|   ��Ļ��ͼ 2026-03-14 115017.png.meta
 |   
 +---Plugins
 |       Google.Protobuf.dll
@@ -20,36 +24,68 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |       System.Runtime.CompilerServices.Unsafe.dll.meta
 |       
 +---Scenes
+|   |   LobbyScene.unity
+|   |   LobbyScene.unity.meta
 |   |   New Folder.meta
 |   |   SampleScene.unity
 |   |   SampleScene.unity.meta
+|   |   test.unity
+|   |   test.unity.meta
 |   |   
 |   \---New Folder
 +---Scripts
 |   |   Network.meta
+|   |   Player.meta
 |   |   Proto.meta
 |   |   UI.meta
 |   |   
 |   +---Network
 |   |       DataManager.cs
 |   |       DataManager.cs.meta
+|   |       GameManager.cs
+|   |       GameManager.cs.meta
 |   |       HttpManager.cs
 |   |       HttpManager.cs.meta
 |   |       NetManager.cs
 |   |       NetManager.cs.meta
+|   |       
+|   +---Player
+|   |       PlayerController.cs
+|   |       PlayerController.cs.meta
 |   |       
 |   +---Proto
 |   |       Game.cs
 |   |       Game.cs.meta
 |   |       
 |   \---UI
-|           LoginController.cs
-|           LoginController.cs.meta
-|           LoginStyles.uss
-|           LoginStyles.uss.meta
-|           LoginView.uxml
-|           LoginView.uxml.meta
-|           
+|       |   GameHUD.meta
+|       |   Lobby.meta
+|       |   Login.meta
+|       |   
+|       +---GameHUD
+|       |       GameHUD.uss
+|       |       GameHUD.uss.meta
+|       |       GameHUD.uxml
+|       |       GameHUD.uxml.meta
+|       |       HUDController.cs
+|       |       HUDController.cs.meta
+|       |       
+|       +---Lobby
+|       |       LobbyController.cs
+|       |       LobbyController.cs.meta
+|       |       LobbyUI.uss
+|       |       LobbyUI.uss.meta
+|       |       LobbyUI.uxml
+|       |       LobbyUI.uxml.meta
+|       |       
+|       \---Login
+|               LoginController.cs
+|               LoginController.cs.meta
+|               LoginStyles.uss
+|               LoginStyles.uss.meta
+|               LoginView.uxml
+|               LoginView.uxml.meta
+|               
 +---TextMesh Pro
 |   |   Documentation.meta
 |   |   Fonts.meta

@@ -1,0 +1,37 @@
+.screen-container {
+    width: 100%;
+    height: 100%;
+    picking-mode: ignore;
+}
+
+/* 宽度极致压缩，和方块差不多宽 */
+.hud-panel {
+    position: absolute;
+    width: 50px; 
+    picking-mode: ignore;
+    translate: -50% 0; /* 保证中心点绝对居中 */
+}
+
+/* 锐利的黑色底框，没有任何圆角 */
+.bar-bg {
+    height: 6px; 
+    background-color: rgba(0, 0, 0, 0.85);
+    border-width: 1px;
+    border-color: rgba(0, 0, 0, 1);
+}
+
+/* 血量：纯正荧光绿 */
+.hp-fill {
+    height: 100%;
+    background-color: rgb(0, 255, 60); 
+    transition-property: width;
+    transition-duration: 0.15s; 
+}
+
+/* 能量：纯正明黄 */
+.energy-fill {
+    height: 100%;
+    background-color: rgb(255, 215, 0);
+    transition-property: width;
+    transition-duration: 0.1s;
+}

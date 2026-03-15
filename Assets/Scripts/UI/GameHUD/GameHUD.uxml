@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="GameHUD.uss" />
+    
+    <ui:VisualElement class="screen-container">
+        <ui:VisualElement name="hud-panel" class="hud-panel">
+            
+            <ui:VisualElement class="bar-bg">
+                <ui:VisualElement name="hp-fill" class="hp-fill" style="width: 100%;" />
+            </ui:VisualElement>
+            
+            <ui:VisualElement class="bar-bg" style="margin-top: 4px;">
+                <ui:VisualElement name="energy-fill" class="energy-fill" style="width: 0%;" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

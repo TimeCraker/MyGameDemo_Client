@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="LobbyUI.uss" />
+
+    <ui:VisualElement class="fullscreen">
+        
+        <ui:VisualElement name="lobby-layer" class="layer-container">
+            
+            <ui:VisualElement class="profile-box">
+                <ui:VisualElement class="avatar-placeholder" />
+                <ui:VisualElement>
+                    <ui:Label text="AsterNova" class="team-tag" />
+                    <ui:Label name="txt-username" text="Player" class="username" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:Button name="btn-open-roster" text="角色选择 &#10;[Roster]" class="side-btn" />
+
+            <ui:VisualElement class="bottom-bar">
+                <ui:Button name="btn-match" text="匹配对战 &#10;(在线: 0)" class="mode-btn big-btn" />
+                <ui:Button name="btn-story" text="剧情模式" class="mode-btn mid-btn" />
+                <ui:Button name="btn-training" text="训练营" class="mode-btn small-btn accent-btn" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+
+        <ui:VisualElement name="roster-layer" class="layer-container roster-overlay" style="display: none;">
+            
+            <ui:VisualElement class="roster-panel">
+                <ui:Label text="选择出战英雄" class="roster-title" />
+                
+                <ui:ScrollView class="role-list">
+                    <ui:Button name="btn-r1" text="极速者 [Speedster]" class="role-select-btn" />
+                    <ui:Button name="btn-r2" text="诅咒师 [Curser]" class="role-select-btn" />
+                    <ui:Button name="btn-r3" text="复苏者 [Reviver]" class="role-select-btn" />
+                    <ui:Button name="btn-r4" text="重装卫士 [Tank]" class="role-select-btn" />
+                </ui:ScrollView>
+
+                <ui:Button name="btn-deploy" text="确认出战" class="deploy-btn" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>
