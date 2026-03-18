@@ -9,7 +9,7 @@
                 <ui:VisualElement name="hp-fill" class="hp-fill" style="width: 100%;" />
             </ui:VisualElement>
             
-            <ui:VisualElement class="bar-bg" style="margin-top: 4px;">
+            <ui:VisualElement class="bar-bg" style="margin-top: 2px;">
                 <ui:VisualElement name="energy-fill" class="energy-fill" style="width: 0%;" />
             </ui:VisualElement>
 

@@ -49,12 +49,6 @@ public class GameManager : MonoBehaviour
     public string Username = "TimeCraker"; // 预设玩家名
     public HeroClass SelectedClass = HeroClass.Role1_Speedster; // 默认选中职业
 
-    // ===== 新增代码 START =====
-    // 修改内容：新增用于跨场景保存房间号的字段
-    // 修改原因：阶段二匹配成功后需要将 RoomId 写入全局，并在 ArenaScene 中使用
-    public string CurrentRoomId = string.Empty;
-    // ===== 新增代码 END =====
-
     private void Awake()
     {
         // 经典的单例模式与跨场景保留
@@ -102,8 +96,8 @@ public class HttpManager : MonoBehaviour
     public void SendEmailCode(string email, Action<bool, string> callback)
     {
         string json = JsonUtility.ToJson(new EmailReq { email = email });
-        Debug.Log($"📡 ==== 3. HttpManager 开始组装发信请求，目标 URL: {httpBaseUrl}/send_code ====");
-        StartCoroutine(PostRequest($"{httpBaseUrl}/send_code", json, callback));
+        Debug.Log($"📡 ==== 3. HttpManager 开始组装发信请求，目标 URL: {httpBaseUrl}/send-code ====");
+        StartCoroutine(PostRequest($"{httpBaseUrl}/send-code", json, callback));
     }
 
     // 2. 注册账号
@@ -211,15 +205,6 @@ public class NetManager : MonoBehaviour
     private Dictionary<uint, GameObject> otherPlayers = new Dictionary<uint, GameObject>();
     private Dictionary<uint, Vector3> otherPlayerTargets = new Dictionary<uint, Vector3>();
     private ConcurrentQueue<GameMessage> messageQueue = new ConcurrentQueue<GameMessage>();
-
-    // ===== 新增代码 START =====
-    // 修改内容：新增匹配成功事件，采用事件驱动方式解耦网络层与 UI/场景层
-    // 修改原因：NetManager 只负责收发数据，不应直接操作 UI 或切场景（避免越权与耦合）
-    public event Action<string> OnMatchSuccessEvent;
-
-    // 防止重复处理 match_success（例如断线重连或重复推送）
-    private bool _matchSuccessHandled = false;
-    // ===== 新增代码 END =====
 
     private void Awake()
     {
@@ -343,23 +328,6 @@ public class NetManager : MonoBehaviour
         {
             Debug.Log($"💬 [玩家 {msg.UserId}]: {msg.Content}");
         }
-        // ===== 新增代码 START =====
-        // 修改内容：监听匹配成功消息，并通过事件通知 UI 层处理切场景逻辑
-        // 修改原因：保证主线程安全（本方法由 Update 主线程调用），并实现职责分离
-        else if (msg.Type == "match_success")
-        {
-            if (_matchSuccessHandled) return;
-            _matchSuccessHandled = true;
-
-            string roomId = msg.RoomId;
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.CurrentRoomId = roomId;
-            }
-
-            OnMatchSuccessEvent?.Invoke(roomId);
-        }
-        // ===== 新增代码 END =====
         else if (msg.Type == "logout")
         {
             uint logoutId = msg.UserId;
@@ -450,22 +418,6 @@ public class NetManager : MonoBehaviour
         }
         catch (Exception e) { Debug.LogError($"❌ 发送异常: {e.Message}"); }
     }
-
-    // ===== 新增代码 START =====
-    // 修改内容：新增发送匹配请求的网络指令
-    // 修改原因：阶段二大厅匹配按钮需要向后端发送 Type = "match_req" 的 Protobuf 消息
-    public async void SendMatchReq()
-    {
-        if (_socket == null || _socket.State != WebSocketState.Open) return;
-        try
-        {
-            GameMessage matchMsg = new GameMessage { Type = "match_req", UserId = myUserId };
-            byte[] data = matchMsg.ToByteArray();
-            await _socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
-        }
-        catch (Exception e) { Debug.LogError($"❌ 发送异常: {e.Message}"); }
-    }
-    // ===== 新增代码 END =====
 
     private async Task ReceiveLoop()
     {
@@ -1023,18 +975,17 @@ namespace Proto {
     static GameReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "CgpnYW1lLnByb3RvEgVwcm90byKzAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
+            "CgpnYW1lLnByb3RvEgVwcm90byKiAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
             "IAEoCRIPCgd1c2VyX2lkGAIgASgNEg8KB2NvbnRlbnQYAyABKAkSCQoBeBgE",
             "IAEoAhIJCgF5GAUgASgCEgkKAXoYBiABKAISIQoHcGxheWVycxgHIAMoCzIQ",
             "LnByb3RvLlBsYXllclBvcxIfCgdoaXN0b3J5GAggAygLMg4ucHJvdG8uQ2hh",
-            "dExvZxIPCgdyb29tX2lkGAkgASgJIj0KCVBsYXllclBvcxIPCgd1c2VyX2lk",
-            "GAEgASgNEgkKAXgYAiABKAISCQoBeRgDIAEoAhIJCgF6GAQgASgCIioKB0No",
-            "YXRMb2cSDgoGc2VuZGVyGAEgASgJEg8KB2NvbnRlbnQYAiABKAlCCVoHLi9w",
-            "cm90b2IGcHJvdG8z"));
+            "dExvZyI9CglQbGF5ZXJQb3MSDwoHdXNlcl9pZBgBIAEoDRIJCgF4GAIgASgC",
+            "EgkKAXkYAyABKAISCQoBehgEIAEoAiIqCgdDaGF0TG9nEg4KBnNlbmRlchgB",
+            "IAEoCRIPCgdjb250ZW50GAIgASgJQglaBy4vcHJvdG9iBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History", "RoomId" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.PlayerPos), global::Proto.PlayerPos.Parser, new[]{ "UserId", "X", "Y", "Z" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.ChatLog), global::Proto.ChatLog.Parser, new[]{ "Sender", "Content" }, null, null, null, null)
           }));
@@ -1089,7 +1040,6 @@ namespace Proto {
       z_ = other.z_;
       players_ = other.players_.Clone();
       history_ = other.history_.Clone();
-      roomId_ = other.roomId_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1103,7 +1053,7 @@ namespace Proto {
     public const int TypeFieldNumber = 1;
     private string type_ = "";
     /// <summary>
-    /// 消息类型: chat, move, init, leave, match_req, match_success
+    /// 消息类型: chat, move, init, leave
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -1214,23 +1164,6 @@ namespace Proto {
       get { return history_; }
     }
 
-    /// <summary>Field number for the "room_id" field.</summary>
-    public const int RoomIdFieldNumber = 9;
-    private string roomId_ = "";
-    /// <summary>
-    /// ===== 新增代码 START =====
-    /// 修改内容：新增基于强类型的房间ID字段
-    /// 修改原因：支持基于房间的物理隔离广播与对局，大厅聊天与房间隔离
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public string RoomId {
-      get { return roomId_; }
-      set {
-        roomId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
-      }
-    }
-
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1254,7 +1187,6 @@ namespace Proto {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Z, other.Z)) return false;
       if(!players_.Equals(other.players_)) return false;
       if(!history_.Equals(other.history_)) return false;
-      if (RoomId != other.RoomId) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1270,7 +1202,6 @@ namespace Proto {
       if (Z != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Z);
       hash ^= players_.GetHashCode();
       hash ^= history_.GetHashCode();
-      if (RoomId.Length != 0) hash ^= RoomId.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1315,10 +1246,6 @@ namespace Proto {
       }
       players_.WriteTo(output, _repeated_players_codec);
       history_.WriteTo(output, _repeated_history_codec);
-      if (RoomId.Length != 0) {
-        output.WriteRawTag(74);
-        output.WriteString(RoomId);
-      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1355,10 +1282,6 @@ namespace Proto {
       }
       players_.WriteTo(ref output, _repeated_players_codec);
       history_.WriteTo(ref output, _repeated_history_codec);
-      if (RoomId.Length != 0) {
-        output.WriteRawTag(74);
-        output.WriteString(RoomId);
-      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1389,9 +1312,6 @@ namespace Proto {
       }
       size += players_.CalculateSize(_repeated_players_codec);
       size += history_.CalculateSize(_repeated_history_codec);
-      if (RoomId.Length != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeStringSize(RoomId);
-      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -1424,9 +1344,6 @@ namespace Proto {
       }
       players_.Add(other.players_);
       history_.Add(other.history_);
-      if (other.RoomId.Length != 0) {
-        RoomId = other.RoomId;
-      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -1478,10 +1395,6 @@ namespace Proto {
             history_.AddEntriesFrom(input, _repeated_history_codec);
             break;
           }
-          case 74: {
-            RoomId = input.ReadString();
-            break;
-          }
         }
       }
     #endif
@@ -1531,10 +1444,6 @@ namespace Proto {
           }
           case 66: {
             history_.AddEntriesFrom(ref input, _repeated_history_codec);
-            break;
-          }
-          case 74: {
-            RoomId = input.ReadString();
             break;
           }
         }
@@ -2182,7 +2091,6 @@ public class HUDController : MonoBehaviour
 --- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\UI\Lobby\LobbyController.cs ---
 
 using UnityEngine;
-using System.Collections;
 using UnityEngine.UIElements;
 using UnityEngine.SceneManagement;
 
@@ -2195,13 +2103,6 @@ public class LobbyController : MonoBehaviour
     private VisualElement lobbyLayer;
     private VisualElement rosterLayer;
     private HeroClass previewClass = HeroClass.Role1_Speedster;
-
-    // 修改内容：缓存匹配按钮引用，用于更新文案与交互状态
-    // 修改原因：阶段二大厅匹配 UI 需要响应点击、显示匹配中/成功状态
-    private Button btnMatch;
-
-    // 用于防止重复触发切场景
-    private bool _isEnteringArena = false;
 
     private void OnEnable()
     {
@@ -2225,7 +2126,7 @@ public class LobbyController : MonoBehaviour
             usernameLabel.text = GameManager.Instance.Username;
         }
 
-        // 3. 绑定主界面按钮
+        // 3. 绑定主界面按钮事件
         Button btnTraining = root.Q<Button>("btn-training");
         if (btnTraining != null) btnTraining.clicked += EnterTrainingCamp;
 
@@ -2249,21 +2150,6 @@ public class LobbyController : MonoBehaviour
         if (btnDeploy != null) btnDeploy.clicked += ConfirmDeployment;
 
         ToggleRoster(false);
-
-        // 修改内容：绑定匹配相关逻辑
-        btnMatch = root.Q<Button>("btn-match");
-        if (btnMatch != null) btnMatch.clicked += OnMatchClicked;
-
-        // 修改内容：增加 NetManager 的空指针判断
-        // 修改原因：如果在未登录（无网络）状态下直接测试大厅，直接调用 Instance 会引发崩溃导致 UI 消失
-        if (NetManager.Instance != null)
-        {
-            NetManager.Instance.OnMatchSuccessEvent += HandleMatchSuccess;
-        }
-        else
-        {
-            Debug.LogWarning("⚠️ LobbyScene: 未检测到 NetManager 实例，匹配事件未绑定。");
-        }
     }
 
     private void Start()
@@ -2282,15 +2168,6 @@ public class LobbyController : MonoBehaviour
             }
 
             PreviewRole(previewClass, defaultColor);
-        }
-    }
-
-    private void OnDisable()
-    {
-        // 修改内容：解绑时增加相同的空指针防御
-        if (NetManager.Instance != null)
-        {
-            NetManager.Instance.OnMatchSuccessEvent -= HandleMatchSuccess;
         }
     }
 
@@ -2335,39 +2212,6 @@ public class LobbyController : MonoBehaviour
         }
 
         SceneManager.LoadScene("test");
-    }
-
-    // 修改内容：阶段二匹配对战核心流转逻辑
-    private void OnMatchClicked()
-    {
-        if (btnMatch != null)
-        {
-            btnMatch.text = "正在寻找对手...";
-            btnMatch.SetEnabled(false);
-        }
-        // 修改内容：增加网络实例判断
-        if (NetManager.Instance != null)
-        {
-            NetManager.Instance.SendMatchReq();
-        }
-    }
-
-    private void HandleMatchSuccess(string roomId)
-    {
-        if (_isEnteringArena) return;
-        _isEnteringArena = true;
-
-        if (btnMatch != null)
-        {
-            btnMatch.text = "匹配成功！正在进入战场...";
-        }
-
-        Invoke(nameof(GoToArena), 0.5f);
-    }
-
-    private void GoToArena()
-    {
-        SceneManager.LoadScene("ArenaScene");
     }
 }
 

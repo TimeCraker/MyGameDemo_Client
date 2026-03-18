@@ -24,17 +24,18 @@ namespace Proto {
     static GameReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "CgpnYW1lLnByb3RvEgVwcm90byKiAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
+            "CgpnYW1lLnByb3RvEgVwcm90byKzAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
             "IAEoCRIPCgd1c2VyX2lkGAIgASgNEg8KB2NvbnRlbnQYAyABKAkSCQoBeBgE",
             "IAEoAhIJCgF5GAUgASgCEgkKAXoYBiABKAISIQoHcGxheWVycxgHIAMoCzIQ",
             "LnByb3RvLlBsYXllclBvcxIfCgdoaXN0b3J5GAggAygLMg4ucHJvdG8uQ2hh",
-            "dExvZyI9CglQbGF5ZXJQb3MSDwoHdXNlcl9pZBgBIAEoDRIJCgF4GAIgASgC",
-            "EgkKAXkYAyABKAISCQoBehgEIAEoAiIqCgdDaGF0TG9nEg4KBnNlbmRlchgB",
-            "IAEoCRIPCgdjb250ZW50GAIgASgJQglaBy4vcHJvdG9iBnByb3RvMw=="));
+            "dExvZxIPCgdyb29tX2lkGAkgASgJIj0KCVBsYXllclBvcxIPCgd1c2VyX2lk",
+            "GAEgASgNEgkKAXgYAiABKAISCQoBeRgDIAEoAhIJCgF6GAQgASgCIioKB0No",
+            "YXRMb2cSDgoGc2VuZGVyGAEgASgJEg8KB2NvbnRlbnQYAiABKAlCCVoHLi9w",
+            "cm90b2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History", "RoomId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.PlayerPos), global::Proto.PlayerPos.Parser, new[]{ "UserId", "X", "Y", "Z" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.ChatLog), global::Proto.ChatLog.Parser, new[]{ "Sender", "Content" }, null, null, null, null)
           }));
@@ -89,6 +90,7 @@ namespace Proto {
       z_ = other.z_;
       players_ = other.players_.Clone();
       history_ = other.history_.Clone();
+      roomId_ = other.roomId_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -102,7 +104,7 @@ namespace Proto {
     public const int TypeFieldNumber = 1;
     private string type_ = "";
     /// <summary>
-    /// 消息类型: chat, move, init, leave
+    /// 消息类型: chat, move, init, leave, match_req, match_success
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -213,6 +215,23 @@ namespace Proto {
       get { return history_; }
     }
 
+    /// <summary>Field number for the "room_id" field.</summary>
+    public const int RoomIdFieldNumber = 9;
+    private string roomId_ = "";
+    /// <summary>
+    /// ===== 新增代码 START =====
+    /// 修改内容：新增基于强类型的房间ID字段
+    /// 修改原因：支持基于房间的物理隔离广播与对局，大厅聊天与房间隔离
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string RoomId {
+      get { return roomId_; }
+      set {
+        roomId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -236,6 +255,7 @@ namespace Proto {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Z, other.Z)) return false;
       if(!players_.Equals(other.players_)) return false;
       if(!history_.Equals(other.history_)) return false;
+      if (RoomId != other.RoomId) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -251,6 +271,7 @@ namespace Proto {
       if (Z != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Z);
       hash ^= players_.GetHashCode();
       hash ^= history_.GetHashCode();
+      if (RoomId.Length != 0) hash ^= RoomId.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -295,6 +316,10 @@ namespace Proto {
       }
       players_.WriteTo(output, _repeated_players_codec);
       history_.WriteTo(output, _repeated_history_codec);
+      if (RoomId.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteString(RoomId);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -331,6 +356,10 @@ namespace Proto {
       }
       players_.WriteTo(ref output, _repeated_players_codec);
       history_.WriteTo(ref output, _repeated_history_codec);
+      if (RoomId.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteString(RoomId);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -361,6 +390,9 @@ namespace Proto {
       }
       size += players_.CalculateSize(_repeated_players_codec);
       size += history_.CalculateSize(_repeated_history_codec);
+      if (RoomId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(RoomId);
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -393,6 +425,9 @@ namespace Proto {
       }
       players_.Add(other.players_);
       history_.Add(other.history_);
+      if (other.RoomId.Length != 0) {
+        RoomId = other.RoomId;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -444,6 +479,10 @@ namespace Proto {
             history_.AddEntriesFrom(input, _repeated_history_codec);
             break;
           }
+          case 74: {
+            RoomId = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -493,6 +532,10 @@ namespace Proto {
           }
           case 66: {
             history_.AddEntriesFrom(ref input, _repeated_history_codec);
+            break;
+          }
+          case 74: {
+            RoomId = input.ReadString();
             break;
           }
         }

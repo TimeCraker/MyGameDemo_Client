@@ -7,8 +7,6 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |   GameEnvironment_Prefab.prefab.meta
 |   GroundMat.mat
 |   GroundMat.mat.meta
-|   MainPanelSettings.asset
-|   MainPanelSettings.asset.meta
 |   PanelTextSettings.asset
 |   PanelTextSettings.asset.meta
 |   Plugins.meta
@@ -26,12 +24,8 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |       System.Runtime.CompilerServices.Unsafe.dll.meta
 |       
 +---Scenes
-|   |   ArenaScene.unity
-|   |   ArenaScene.unity.meta
 |   |   LobbyScene.unity
 |   |   LobbyScene.unity.meta
-|   |   LoginUIScene.unity
-|   |   LoginUIScene.unity.meta
 |   |   New Folder.meta
 |   |   SampleScene.unity
 |   |   SampleScene.unity.meta

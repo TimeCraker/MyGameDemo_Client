@@ -38,6 +38,15 @@ public class NetManager : MonoBehaviour
     private Dictionary<uint, Vector3> otherPlayerTargets = new Dictionary<uint, Vector3>();
     private ConcurrentQueue<GameMessage> messageQueue = new ConcurrentQueue<GameMessage>();
 
+    // ===== 新增代码 START =====
+    // 修改内容：新增匹配成功事件，采用事件驱动方式解耦网络层与 UI/场景层
+    // 修改原因：NetManager 只负责收发数据，不应直接操作 UI 或切场景（避免越权与耦合）
+    public event Action<string> OnMatchSuccessEvent;
+
+    // 防止重复处理 match_success（例如断线重连或重复推送）
+    private bool _matchSuccessHandled = false;
+    // ===== 新增代码 END =====
+
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(this); return; }
@@ -54,7 +63,10 @@ public class NetManager : MonoBehaviour
         // ===== 修改代码 END =====
     }
 
-    public async void ConnectToServer()
+    // ===== 新增代码 START =====
+    // 修改内容：新增 ConnectToArena() 入口
+    // 修改原因：React Web 端已匹配成功并注入 roomId；Unity 仅负责战斗容器，需要进入“对战服连接准备”流程（下一阶段实现）
+    public async void ConnectToArena()
     {
         if (!DataManager.IsLoggedIn())
         {
@@ -63,12 +75,14 @@ public class NetManager : MonoBehaviour
         }
 
         myUserId = DataManager.MyUserId;
-        string finalUrl = $"{baseWsUrl}?token={DataManager.Token}";
+
+        string roomId = (GameManager.Instance != null) ? GameManager.Instance.CurrentRoomId : string.Empty;
+        string finalUrl = $"{baseWsUrl}?token={DataManager.Token}&room_id={roomId}";
 
         _socket = new ClientWebSocket();
         try
         {
-            Debug.Log($"🌐 正在连接游戏大厅 (玩家ID: {myUserId})...");
+            Debug.Log($"🌐 正在连接对战服务器 (玩家ID: {myUserId}, roomId: {roomId})...");
             using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             {
                 await _socket.ConnectAsync(new Uri(finalUrl), cts.Token);
@@ -76,7 +90,7 @@ public class NetManager : MonoBehaviour
 
             if (_socket.State == WebSocketState.Open)
             {
-                Debug.Log("✅ 成功连接至 Go 后端大厅！");
+                Debug.Log("✅ 成功连接至 Go 后端对战通道！");
 
                 // ===== 修改代码 START =====
                 // [连接成功后，动态实例化 3D 游戏世界预制体，正式开始游戏渲染]
@@ -100,6 +114,7 @@ public class NetManager : MonoBehaviour
             Debug.LogError($"❌ 连接失败: {e.Message}");
         }
     }
+    // ===== 新增代码 END =====
 
     void Update()
     {
@@ -160,6 +175,23 @@ public class NetManager : MonoBehaviour
         {
             Debug.Log($"💬 [玩家 {msg.UserId}]: {msg.Content}");
         }
+        // ===== 新增代码 START =====
+        // 修改内容：监听匹配成功消息，并通过事件通知 UI 层处理切场景逻辑
+        // 修改原因：保证主线程安全（本方法由 Update 主线程调用），并实现职责分离
+        else if (msg.Type == "match_success")
+        {
+            if (_matchSuccessHandled) return;
+            _matchSuccessHandled = true;
+
+            string roomId = msg.RoomId;
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.CurrentRoomId = roomId;
+            }
+
+            OnMatchSuccessEvent?.Invoke(roomId);
+        }
+        // ===== 新增代码 END =====
         else if (msg.Type == "logout")
         {
             uint logoutId = msg.UserId;
@@ -250,6 +282,22 @@ public class NetManager : MonoBehaviour
         }
         catch (Exception e) { Debug.LogError($"❌ 发送异常: {e.Message}"); }
     }
+
+    // ===== 新增代码 START =====
+    // 修改内容：新增发送匹配请求的网络指令
+    // 修改原因：阶段二大厅匹配按钮需要向后端发送 Type = "match_req" 的 Protobuf 消息
+    public async void SendMatchReq()
+    {
+        if (_socket == null || _socket.State != WebSocketState.Open) return;
+        try
+        {
+            GameMessage matchMsg = new GameMessage { Type = "match_req", UserId = myUserId };
+            byte[] data = matchMsg.ToByteArray();
+            await _socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
+        }
+        catch (Exception e) { Debug.LogError($"❌ 发送异常: {e.Message}"); }
+    }
+    // ===== 新增代码 END =====
 
     private async Task ReceiveLoop()
     {
