@@ -34,8 +34,11 @@ public class NetManager : MonoBehaviour
     public float moveSpeed = 5f;
     private Vector3 targetPosition;
 
-    private Dictionary<uint, GameObject> otherPlayers = new Dictionary<uint, GameObject>();
-    private Dictionary<uint, Vector3> otherPlayerTargets = new Dictionary<uint, Vector3>();
+    // ===== 新增代码 START =====
+    // 修改原因：远端位置/旋转同步由 PlayerController 内部插值完成，避免直接赋值/瞬移造成卡顿
+    // 影响范围：仅影响对战场景下其他玩家模型的更新链路
+    private Dictionary<uint, PlayerController> otherPlayers = new Dictionary<uint, PlayerController>();
+    // ===== 新增代码 END =====
     private ConcurrentQueue<GameMessage> messageQueue = new ConcurrentQueue<GameMessage>();
 
     // ===== 新增代码 START =====
@@ -146,19 +149,7 @@ public class NetManager : MonoBehaviour
             transform.position = Vector3.MoveTowards(transform.position, targetPosition, moveSpeed * Time.deltaTime);
         }
 
-        foreach (var kvp in otherPlayers)
-        {
-            uint id = kvp.Key;
-            GameObject otherCube = kvp.Value;
-
-            if (otherPlayerTargets.TryGetValue(id, out Vector3 targetPos))
-            {
-                if (Vector3.Distance(otherCube.transform.position, targetPos) > 0.01f)
-                {
-                    otherCube.transform.position = Vector3.MoveTowards(otherCube.transform.position, targetPos, moveSpeed * Time.deltaTime);
-                }
-            }
-        }
+        // 远端插值：由每个 remote PlayerController 的 Update() 负责进行 Vector3.Lerp/Quaternion.Slerp
     }
 
     private void ProcessNetworkMessage(GameMessage msg)
@@ -197,9 +188,8 @@ public class NetManager : MonoBehaviour
             uint logoutId = msg.UserId;
             if (otherPlayers.ContainsKey(logoutId))
             {
-                Destroy(otherPlayers[logoutId]);
+                Destroy(otherPlayers[logoutId].gameObject);
                 otherPlayers.Remove(logoutId);
-                otherPlayerTargets.Remove(logoutId);
                 Debug.Log($"👋 玩家 {logoutId} 已离开游戏，已清理对应模型。");
             }
         }
@@ -211,14 +201,20 @@ public class NetManager : MonoBehaviour
         if (incomingId == myUserId) return;
 
         Vector3 newPos = new Vector3(msg.X, msg.Y, msg.Z);
+
         if (!otherPlayers.ContainsKey(incomingId))
         {
             CreateNewPlayer(incomingId, newPos);
         }
-        else
+
+        // ===== 新增代码 START =====
+        // 修改原因：废弃瞬移/直接赋值逻辑，改为交给 PlayerController 进行 Lerp/Slerp 插值
+        // 影响范围：远端玩家位置 + rot_y 丝滑同步
+        if (otherPlayers.TryGetValue(incomingId, out PlayerController pc))
         {
-            otherPlayerTargets[incomingId] = newPos;
+            pc.ApplyNetworkState(msg.X, msg.Y, msg.Z, msg.RotY);
         }
+        // ===== 新增代码 END =====
     }
 
     private void HandleInitPlayers(GameMessage msg)
@@ -228,14 +224,19 @@ public class NetManager : MonoBehaviour
         {
             if (p.UserId == myUserId) continue;
             Vector3 pos = new Vector3(p.X, p.Y, p.Z);
+
             if (!otherPlayers.ContainsKey(p.UserId))
             {
                 CreateNewPlayer(p.UserId, pos);
             }
-            else
+
+            // ===== 新增代码 START =====
+            // 初始包 PlayerPos 未携带 rot_y：默认朝向为 0，后续 move 将用 rot_y 做 Slerp 校正
+            if (otherPlayers.TryGetValue(p.UserId, out PlayerController pc))
             {
-                otherPlayerTargets[p.UserId] = pos;
+                pc.ApplyNetworkState(p.X, p.Y, p.Z, 0f);
             }
+            // ===== 新增代码 END =====
         }
     }
 
@@ -251,8 +252,18 @@ public class NetManager : MonoBehaviour
         newPlayer.transform.position = pos;
         CreateNameTag(newPlayer, $"Player {id}");
 
-        otherPlayers.Add(id, newPlayer);
-        otherPlayerTargets.Add(id, pos);
+        // ===== 新增代码 START =====
+        // 添加 Rigidbody 与 PlayerController，让远端插值走 PlayerController 的 Lerp/Slerp 管线
+        Rigidbody rb = newPlayer.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+
+        PlayerController pc = newPlayer.AddComponent<PlayerController>();
+        pc.isLocalPlayer = false;
+
+        otherPlayers.Add(id, pc);
+        // ===== 新增代码 END =====
+
         Debug.Log($"👤 成功加载玩家模型: ID {id}");
     }
 
@@ -276,7 +287,22 @@ public class NetManager : MonoBehaviour
         if (_socket == null || _socket.State != WebSocketState.Open) return;
         try
         {
-            GameMessage moveMsg = new GameMessage { Type = "move", X = x, Y = y, Z = z, UserId = myUserId };
+            // ===== 新增代码 START =====
+            // 修改内容：发送位置信息同时携带 rot_y（transform.eulerAngles.y）与房间 room_id
+            // 修改原因：后续由接收端使用 Quaternion.Slerp 同步朝向，彻底消除轻微卡顿
+            // 影响范围：对战场景 move 包协议扩展
+            string roomId = (GameManager.Instance != null) ? GameManager.Instance.CurrentRoomId : string.Empty;
+            GameMessage moveMsg = new GameMessage
+            {
+                Type = "move",
+                X = x,
+                Y = y,
+                Z = z,
+                UserId = myUserId,
+                RotY = transform.eulerAngles.y,
+                RoomId = roomId
+            };
+            // ===== 新增代码 END =====
             byte[] data = moveMsg.ToByteArray();
             await _socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
         }

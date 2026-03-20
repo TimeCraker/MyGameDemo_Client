@@ -1,5 +1,354 @@
 ﻿
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\Network\DataManager.cs ---
+--- FILE: \Assets\Scripts\Network\BattleWsClient.cs ---
+
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using Google.Protobuf;
+using NativeWebSocket;
+using Proto;
+using UnityEngine;
+
+public class BattleWsClient : MonoBehaviour
+{
+    [Serializable]
+    private class BattleInitPayload
+    {
+        public string token;
+        public string roomId;
+        public uint userId;
+        public string wsBase;
+    }
+
+    private const string DefaultWsBase = "ws://127.0.0.1:8081/ws";
+    private readonly Dictionary<uint, GameObject> _playerCubes = new Dictionary<uint, GameObject>();
+    private WebSocket _socket;
+    // ===== 新增代码 START =====
+    // 修改内容：新增本地玩家与定时发送状态缓存
+    // 修改原因：战场必须持续上报本地坐标，避免远端看不到移动
+    [SerializeField] private Transform localPlayerTransform;
+    private uint _localUserId;
+    private string _localRoomId = string.Empty;
+    private float _moveSendTimer;
+    private const float MoveSendInterval = 1f / 12f; // 12Hz
+    private bool _isSendingMove;
+    // ===== 新增代码 END =====
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")]
+    private static extern void NotifyReactBattleResult(string resultType, string payloadJson);
+#endif
+
+    // ===== 新增代码 START =====
+    // 修改内容：入口处强制解锁帧率（关闭垂直同步 + 交给浏览器调度）
+    // 修改原因：WebGL 调试阶段降低拖拽感，提升对战视觉响应
+    // 影响范围：仅当前脚本所在运行实例
+    private void Awake()
+    {
+        QualitySettings.vSyncCount = 0;
+        Application.targetFrameRate = -1;
+    }
+    // ===== 新增代码 END =====
+
+    private void Update()
+    {
+#if !UNITY_WEBGL || UNITY_EDITOR
+        _socket?.DispatchMessageQueue();
+#endif
+        // ===== 新增代码 START =====
+        // 修改内容：按固定频率上传本地玩家 move 包（x/y/z + rot_y）
+        // 修改原因：补齐战场实时同步链路，解决“哑巴状态”
+        // 影响范围：仅 Battle WebSocket 打开时的周期上报
+        if (_socket == null || _socket.State != WebSocketState.Open) return;
+        _moveSendTimer += Time.deltaTime;
+        if (_moveSendTimer < MoveSendInterval) return;
+        _moveSendTimer = 0f;
+
+        TryResolveLocalPlayerTransform();
+        if (localPlayerTransform == null) return;
+        if (_isSendingMove) return;
+        SendMove(localPlayerTransform.position, localPlayerTransform.eulerAngles.y);
+        // ===== 新增代码 END =====
+    }
+
+    private async void OnDestroy()
+    {
+        if (_socket != null)
+        {
+            await _socket.Close();
+            _socket = null;
+        }
+    }
+
+    // ===== 新增代码 START =====
+    // 修改内容：供 React 通过 SendMessage 调用，使用 JSON 注入 token/room_id/user_id/ws 基址
+    // 修改原因：WebGL 场景下通过 JS -> Unity 完成战场初始化参数传递
+    // 影响范围：战场初始化握手阶段
+    public async void EnterBattle(string payloadJson)
+    {
+        // ===== 新增代码 START =====
+        // 修改内容：连接防抖锁，避免重复创建 WebSocket
+        // 修改原因：前端严格模式/重复注入可能触发 EnterBattle 两次
+        // 影响范围：Battle WebSocket 建连入口
+        if (_socket != null && (_socket.State == WebSocketState.Open || _socket.State == WebSocketState.Connecting))
+        {
+            Debug.LogWarning("[BattleWsClient] EnterBattle ignored: socket already open/connecting.");
+            return;
+        }
+        // ===== 新增代码 END =====
+
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            Debug.LogError("[BattleWsClient] Empty payload.");
+            return;
+        }
+
+        BattleInitPayload payload;
+        try
+        {
+            payload = JsonUtility.FromJson<BattleInitPayload>(payloadJson);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[BattleWsClient] Parse payload failed: {ex}");
+            return;
+        }
+
+        if (payload == null || string.IsNullOrWhiteSpace(payload.token) || string.IsNullOrWhiteSpace(payload.roomId))
+        {
+            Debug.LogError("[BattleWsClient] Missing token/roomId.");
+            return;
+        }
+        _localUserId = payload.userId;
+        _localRoomId = payload.roomId;
+
+        // ===== 新增代码 START =====
+        // 修改内容：按后端真实协议重构 URL，room_id 通过 query 传参
+        // 修改原因：Go 后端监听 8081 /ws，且要求 token + room_id query
+        // 影响范围：仅 Battle WebSocket 建连 URL
+        string wsBase = string.IsNullOrWhiteSpace(payload.wsBase) ? DefaultWsBase : payload.wsBase;
+        wsBase = wsBase.TrimEnd('/');
+        string wsUrl = $"{wsBase}?token={Uri.EscapeDataString(payload.token)}&room_id={Uri.EscapeDataString(payload.roomId)}";
+        Debug.Log($"[BattleWsClient] Connecting URL => {wsUrl}");
+        // ===== 新增代码 END =====
+
+        _socket = new WebSocket(wsUrl);
+
+        _socket.OnOpen += () =>
+        {
+            Debug.Log("[BattleWsClient] Connected.");
+            SendInitOrJoin(payload.roomId, payload.token, payload.userId);
+        };
+
+        _socket.OnError += (err) =>
+        {
+            Debug.LogError($"[BattleWsClient] Error: {err}");
+        };
+
+        _socket.OnClose += (code) =>
+        {
+            Debug.Log($"[BattleWsClient] Closed: {code}");
+        };
+
+        _socket.OnMessage += (bytes) =>
+        {
+            HandleBinaryMessage(bytes);
+        };
+
+        await _socket.Connect();
+    }
+    // ===== 新增代码 END =====
+
+    private async void SendInitOrJoin(string roomId, string token, uint userId)
+    {
+        if (_socket == null || _socket.State != WebSocketState.Open) return;
+
+        var initMessage = new GameMessage
+        {
+            Type = "init",
+            RoomId = roomId,
+            UserId = userId,
+            Content = token
+        };
+
+        byte[] data = initMessage.ToByteArray();
+        await _socket.Send(data);
+    }
+
+    // ===== 新增代码 START =====
+    // 修改内容：二进制 Protobuf 接收与解析
+    // 修改原因：战场通信协议由 JSON 改为 game.proto 强类型二进制
+    // 影响范围：所有服务端推送消息处理
+    private void HandleBinaryMessage(byte[] bytes)
+    {
+        if (bytes == null || bytes.Length == 0) return;
+
+        GameMessage message;
+        try
+        {
+            message = GameMessage.Parser.ParseFrom(bytes);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[BattleWsClient] ParseFrom failed: {ex}");
+            return;
+        }
+
+        switch (message.Type)
+        {
+            case "snapshot":
+                foreach (var p in message.Players)
+                {
+
+                    // 修改内容：先过滤本地玩家回音包，避免本地重影
+                    // 修改原因：服务端广播全量房间状态，本地玩家数据不应生成远端替身
+                    // 影响范围：snapshot 玩家渲染
+                    if (p.UserId == _localUserId) continue;
+                    UpsertPlayerCube(p.UserId, p.X, p.Y, p.Z, p.RotY);
+                }
+                break;
+            case "move":
+            case "state":
+
+                // 修改内容：先过滤本地玩家回音包，避免本地重影
+                // 修改原因：服务端回播本地 move/state 时不应驱动远端实体创建
+                // 影响范围：move/state 玩家渲染
+                if (message.UserId == _localUserId) return;
+                UpsertPlayerCube(message.UserId, message.X, message.Y, message.Z, message.RotY);
+
+                break;
+            case "opponent_left":
+            case "victory":
+            case "win":
+                NotifyReact(message.Type, message.RoomId, message.UserId);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // 修改内容：Greybox 玩家方块与浅粉 -> 紫色调试配色
+    // 修改原因：快速可视化双端同步，提升联调可读性
+    // 影响范围：仅测试方块渲染层
+    private void UpsertPlayerCube(uint userId, float x, float y, float z, float rotY)
+    {
+        if (!_playerCubes.TryGetValue(userId, out var cube))
+        {
+            cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = $"Player_{userId}";
+            _playerCubes[userId] = cube;
+
+            var renderer = cube.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var mat = new Material(Shader.Find("Unlit/Color"));
+                Color lightPink = new Color(1.0f, 0.72f, 0.86f, 1.0f);
+                Color purple = new Color(0.56f, 0.20f, 0.86f, 1.0f);
+                float t = Mathf.PingPong(_playerCubes.Count - 1, 1f);
+                mat.color = Color.Lerp(lightPink, purple, t);
+                renderer.material = mat;
+            }
+
+            // ===== 新增代码 START =====
+            // 修改内容：为远端玩家注入网络驱动所需组件（刚体 + 控制器）
+            // 修改原因：远端对象必须走 PlayerController 的插值系统，而非死物方块
+            // 影响范围：远端玩家实体初始化
+            var rb = cube.GetComponent<Rigidbody>();
+            if (rb == null)
+            {
+                rb = cube.AddComponent<Rigidbody>();
+            }
+            rb.isKinematic = true;
+            rb.useGravity = false;
+
+            var pc = cube.GetComponent<PlayerController>();
+            if (pc == null)
+            {
+                pc = cube.AddComponent<PlayerController>();
+            }
+            pc.isLocalPlayer = false;
+            // ===== 新增代码 END =====
+        }
+
+        // ===== 新增代码 START =====
+        // 修改内容：统一通过 PlayerController 网络插值接口喂状态
+        // 修改原因：避免直接改 transform 造成远端“植物人/瞬移感”
+        // 影响范围：远端玩家位姿更新
+        var playerController = cube.GetComponent<PlayerController>();
+        if (playerController != null)
+        {
+            playerController.isLocalPlayer = false;
+            playerController.ApplyNetworkState(x, y, z, rotY);
+            return;
+        }
+        // 兜底：若组件异常缺失，至少保证位置与朝向更新
+        cube.transform.position = new Vector3(x, y, z);
+        cube.transform.rotation = Quaternion.Euler(0f, rotY, 0f);
+        // ===== 新增代码 END =====
+    }
+    // ===== 新增代码 END =====
+
+    private void NotifyReact(string resultType, string roomId, uint userId)
+    {
+        string payloadJson = $"{{\"roomId\":\"{roomId}\",\"userId\":{userId}}}";
+#if UNITY_WEBGL && !UNITY_EDITOR
+        NotifyReactBattleResult(resultType, payloadJson);
+#else
+        Debug.Log($"[BattleWsClient] Result => {resultType}, {payloadJson}");
+#endif
+    }
+
+    // ===== 新增代码 START =====
+    // 修改内容：自动定位本地玩家 Transform（PlayerController.isLocalPlayer = true）
+    // 修改原因：不修改 PlayerController 的前提下补齐本地坐标上传
+    // 影响范围：BattleWsClient 内部引用解析
+    private void TryResolveLocalPlayerTransform()
+    {
+        if (localPlayerTransform != null) return;
+        var playerControllers = FindObjectsOfType<PlayerController>();
+        for (int i = 0; i < playerControllers.Length; i++)
+        {
+            if (playerControllers[i] != null && playerControllers[i].isLocalPlayer)
+            {
+                localPlayerTransform = playerControllers[i].transform;
+                Debug.Log($"[BattleWsClient] Local player resolved => {localPlayerTransform.name}");
+                return;
+            }
+        }
+    }
+
+    private async void SendMove(Vector3 position, float rotY)
+    {
+        if (_socket == null || _socket.State != WebSocketState.Open) return;
+        _isSendingMove = true;
+        try
+        {
+            var moveMessage = new GameMessage
+            {
+                Type = "move",
+                UserId = _localUserId,
+                RoomId = _localRoomId,
+                X = position.x,
+                Y = position.y,
+                Z = position.z,
+                RotY = rotY
+            };
+            await _socket.Send(moveMessage.ToByteArray());
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[BattleWsClient] Send move failed: {ex.Message}");
+        }
+        finally
+        {
+            _isSendingMove = false;
+        }
+    }
+    // ===== 新增代码 END =====
+}
+
+
+--- FILE: \Assets\Scripts\Network\DataManager.cs ---
 
 // --- FILE: Assets/Scripts/Network/DataManager.cs ---
 
@@ -37,17 +386,42 @@ public static class DataManager
 }
 // ===== 新增代码 END =====
 
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\Network\GameManager.cs ---
+--- FILE: \Assets\Scripts\Network\GameManager.cs ---
 
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
+    // 修改内容：新增前端注入载荷模型（JSON）
+    // 修改原因：React 端改为 JSON 传参，便于扩展 wsBase 等字段
+    [System.Serializable]
+    private class EnterBattlePayload
+    {
+        public string token;
+        public string roomId;
+        public uint userId;
+        public string selectedClass;
+        public string wsBase;
+    }
+
     public static GameManager Instance;
 
     [Header("玩家全局数据")]
     public string Username = "TimeCraker"; // 预设玩家名
     public HeroClass SelectedClass = HeroClass.Role1_Speedster; // 默认选中职业
+
+    // ===== 新增代码 START =====
+    // 修改内容：新增用于跨场景保存房间号的字段
+    // 修改原因：阶段二匹配成功后需要将 RoomId 写入全局，并在 ArenaScene 中使用
+    public string CurrentRoomId = string.Empty;
+    // ===== 新增代码 END =====
+
+    // ===== 新增代码 START =====
+    // 修改内容：缓存 BattleWsClient 引用，避免 EnterBattle 时反复场景查找
+    // 修改原因：统一网络链路入口并提升稳定性
+    [Header("网络桥接")]
+    [SerializeField] private BattleWsClient battleWsClient;
+    // ===== 新增代码 END =====
 
     private void Awake()
     {
@@ -59,112 +433,147 @@ public class GameManager : MonoBehaviour
         }
         Instance = this;
         DontDestroyOnLoad(gameObject);
-    }
-}
 
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\Network\HttpManager.cs ---
-
-using System;
-using System.Collections;
-using System.Text;
-using UnityEngine;
-using UnityEngine.Networking;
-
-public class HttpManager : MonoBehaviour
-{
-    public static HttpManager Instance;
-
-    [Header("服务器配置")]
-    // [直接写死 127.0.0.1，防止 Unity 面板覆盖导致 localhost 解析失败]
-    public string httpBaseUrl = "http://127.0.0.1:8081/api/v1";
-
-    private void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-        DontDestroyOnLoad(gameObject); // 切换场景时不销毁
-    }
-
-    // --- JSON 数据结构定义 (与 Go 后端严格对应) ---
-    [Serializable] public class EmailReq { public string email; }
-    [Serializable] public class RegisterReq { public string username; public string password; public string email; public string code; }
-    [Serializable] public class LoginReq { public string username; public string password; }
-    [Serializable] public class LoginRes { public string message; public string token; }
-    [Serializable] public class ErrorRes { public string error; }
-
-    // 1. 发送邮箱验证码 (带雷达日志)
-    public void SendEmailCode(string email, Action<bool, string> callback)
-    {
-        string json = JsonUtility.ToJson(new EmailReq { email = email });
-        Debug.Log($"📡 ==== 3. HttpManager 开始组装发信请求，目标 URL: {httpBaseUrl}/send-code ====");
-        StartCoroutine(PostRequest($"{httpBaseUrl}/send-code", json, callback));
-    }
-
-    // 2. 注册账号
-    public void Register(string username, string password, string email, string code, Action<bool, string> callback)
-    {
-        string json = JsonUtility.ToJson(new RegisterReq { username = username, password = password, email = email, code = code });
-        StartCoroutine(PostRequest($"{httpBaseUrl}/register", json, callback));
-    }
-
-    // 3. 登录账号
-    public void Login(string username, string password, Action<bool, string> callback)
-    {
-        string json = JsonUtility.ToJson(new LoginReq { username = username, password = password });
-        StartCoroutine(PostRequest($"{httpBaseUrl}/login", json, (success, responseData) =>
+        // ===== 新增代码 START =====
+        // 修改内容：Awake 阶段完成 BattleWsClient 引用初始化
+        // 修改原因：确保 EnterBattle 能优先走 WebGL 兼容链路
+        if (battleWsClient == null)
         {
-            if (success)
-            {
-                LoginRes res = JsonUtility.FromJson<LoginRes>(responseData);
-                DataManager.SaveLoginData(res.token, 0);
-                callback(true, "登录成功");
-            }
-            else
-            {
-                callback(false, responseData);
-            }
-        }));
+            battleWsClient = GetComponent<BattleWsClient>();
+        }
+        if (battleWsClient == null)
+        {
+            battleWsClient = FindObjectOfType<BattleWsClient>();
+        }
+        // ===== 新增代码 END =====
     }
 
-    // 底层 POST 请求协程 (带雷达日志)
-    private IEnumerator PostRequest(string url, string jsonBody, Action<bool, string> callback)
+    // ===== 新增代码 START =====
+    // 修改内容：新增供 WebGL/网页端调用的桥接入口 EnterBattle(payload)
+    // 修改原因：React Web 端已完成登录/大厅/匹配；Unity 仅作为战斗容器，需要从网页侧注入 token/userId/roomId/heroClass
+    // 约定格式：优先 JSON（token/userId/roomId/selectedClass/wsBase），兼容旧格式 token|userId|roomId|heroClass
+    public void EnterBattle(string payload)
     {
-        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        if (string.IsNullOrEmpty(payload))
         {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
+            Debug.LogError("❌ EnterBattle: payload 为空，无法进入战场");
+            return;
+        }
 
-            yield return request.SendWebRequest();
+        // ===== 新增代码 START =====
+        // 修改内容：先尝试 JSON 解析；失败再回退旧的分隔符协议
+        // 修改原因：前端已切换 JSON 传参，同时保留向后兼容
+        string token = string.Empty;
+        uint userId = 0;
+        string roomId = string.Empty;
+        string heroClassStr = string.Empty;
+        string wsBase = string.Empty;
 
-            if (request.result == UnityWebRequest.Result.Success)
+        bool parsed = false;
+        if (!string.IsNullOrWhiteSpace(payload) && payload.TrimStart().StartsWith("{"))
+        {
+            try
             {
-                Debug.Log($"✅ ==== 4. HTTP 请求成功送达！后端返回: {request.downloadHandler.text} ====");
-                callback(true, request.downloadHandler.text);
-            }
-            else
-            {
-                Debug.LogError($"❌ ==== 4. HTTP 请求发生致命错误: {request.error} ====");
-                string errorMsg = request.error;
-                try
+                EnterBattlePayload p = JsonUtility.FromJson<EnterBattlePayload>(payload);
+                if (p != null && !string.IsNullOrWhiteSpace(p.token) && !string.IsNullOrWhiteSpace(p.roomId) && p.userId > 0)
                 {
-                    ErrorRes errRes = JsonUtility.FromJson<ErrorRes>(request.downloadHandler.text);
-                    if (errRes != null && !string.IsNullOrEmpty(errRes.error))
-                    {
-                        errorMsg = errRes.error;
-                        Debug.LogError($"❌ ==== 后端附加的详细错误: {errorMsg} ====");
-                    }
+                    token = p.token;
+                    userId = p.userId;
+                    roomId = p.roomId;
+                    heroClassStr = p.selectedClass ?? string.Empty;
+                    wsBase = p.wsBase ?? string.Empty;
+                    parsed = true;
                 }
-                catch { /* 解析失败则使用默认网络错误 */ }
-
-                callback(false, errorMsg);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"⚠️ EnterBattle JSON 解析失败，将回退旧协议: {ex.Message}");
             }
         }
+
+        if (!parsed)
+        {
+            string[] parts = payload.Split('|');
+            if (parts.Length < 4)
+            {
+                Debug.LogError($"❌ EnterBattle: payload 格式错误，期望 4 段或 JSON，实际 {parts.Length} 段，payload={payload}");
+                return;
+            }
+
+            token = parts[0];
+            if (!uint.TryParse(parts[1], out userId) || userId == 0)
+            {
+                Debug.LogError($"❌ EnterBattle: userId 解析失败，userId={parts[1]}");
+                return;
+            }
+            roomId = parts[2];
+            heroClassStr = parts[3];
+        }
+        // ===== 新增代码 END =====
+
+        // 将 token/userId 写入 DataManager（替代旧 Unity 登录态）
+        DataManager.SaveLoginData(token, userId);
+
+        // 保存房间号供后续对战同步使用
+        CurrentRoomId = roomId ?? string.Empty;
+
+        // 兼容前端命名差异：前端/协议可能与 Unity 枚举名不完全一致
+        // - Role2_Cursemancer -> Role2_Curser
+        // - Role4_Bulwark -> Role4_Tank
+        if (string.Equals(heroClassStr, "Role2_Cursemancer", System.StringComparison.OrdinalIgnoreCase))
+        {
+            heroClassStr = "Role2_Curser";
+        }
+        else if (string.Equals(heroClassStr, "Role4_Bulwark", System.StringComparison.OrdinalIgnoreCase))
+        {
+            heroClassStr = "Role4_Tank";
+        }
+
+        if (!System.Enum.TryParse(heroClassStr, ignoreCase: false, out HeroClass parsedClass))
+        {
+            Debug.LogWarning($"⚠️ EnterBattle: heroClass 解析失败，将使用默认职业。heroClass={heroClassStr}");
+        }
+        else
+        {
+            SelectedClass = parsedClass;
+        }
+
+        Debug.Log($"✅ EnterBattle: 注入完成 -> userId={userId}, roomId={CurrentRoomId}, class={SelectedClass}");
+
+        // ===== 新增代码 START =====
+        // 修改内容：优先切到 WebGL 兼容的 BattleWsClient（NativeWebSocket）
+        // 修改原因：ClientWebSocket 在 WebGL 不可用，且战场已切到 Protobuf 二进制链路
+        if (battleWsClient != null)
+        {
+            string jsonPayload = JsonUtility.ToJson(new EnterBattlePayload
+            {
+                token = token,
+                roomId = roomId,
+                userId = userId,
+                selectedClass = heroClassStr,
+                wsBase = wsBase
+            });
+            battleWsClient.EnterBattle(jsonPayload);
+        }
+        else
+        {
+            Debug.LogWarning("⚠️ EnterBattle: 未检测到 BattleWsClient，回退 NetManager.ConnectToArena()");
+            // 保底回退老链路（编辑器或历史场景）
+            if (NetManager.Instance != null)
+            {
+                NetManager.Instance.ConnectToArena();
+            }
+            else
+            {
+                Debug.LogError("❌ EnterBattle: 未检测到 BattleWsClient/NetManager，无法进入对战连接流程");
+            }
+        }
+        // ===== 新增代码 END =====
     }
+    // ===== 新增代码 END =====
 }
 
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\Network\NetManager.cs ---
+--- FILE: \Assets\Scripts\Network\NetManager.cs ---
 
 using System;
 using System.Net.WebSockets;
@@ -202,9 +611,21 @@ public class NetManager : MonoBehaviour
     public float moveSpeed = 5f;
     private Vector3 targetPosition;
 
-    private Dictionary<uint, GameObject> otherPlayers = new Dictionary<uint, GameObject>();
-    private Dictionary<uint, Vector3> otherPlayerTargets = new Dictionary<uint, Vector3>();
+    // ===== 新增代码 START =====
+    // 修改原因：远端位置/旋转同步由 PlayerController 内部插值完成，避免直接赋值/瞬移造成卡顿
+    // 影响范围：仅影响对战场景下其他玩家模型的更新链路
+    private Dictionary<uint, PlayerController> otherPlayers = new Dictionary<uint, PlayerController>();
+    // ===== 新增代码 END =====
     private ConcurrentQueue<GameMessage> messageQueue = new ConcurrentQueue<GameMessage>();
+
+    // ===== 新增代码 START =====
+    // 修改内容：新增匹配成功事件，采用事件驱动方式解耦网络层与 UI/场景层
+    // 修改原因：NetManager 只负责收发数据，不应直接操作 UI 或切场景（避免越权与耦合）
+    public event Action<string> OnMatchSuccessEvent;
+
+    // 防止重复处理 match_success（例如断线重连或重复推送）
+    private bool _matchSuccessHandled = false;
+    // ===== 新增代码 END =====
 
     private void Awake()
     {
@@ -222,7 +643,10 @@ public class NetManager : MonoBehaviour
         // ===== 修改代码 END =====
     }
 
-    public async void ConnectToServer()
+    // ===== 新增代码 START =====
+    // 修改内容：新增 ConnectToArena() 入口
+    // 修改原因：React Web 端已匹配成功并注入 roomId；Unity 仅负责战斗容器，需要进入“对战服连接准备”流程（下一阶段实现）
+    public async void ConnectToArena()
     {
         if (!DataManager.IsLoggedIn())
         {
@@ -231,12 +655,14 @@ public class NetManager : MonoBehaviour
         }
 
         myUserId = DataManager.MyUserId;
-        string finalUrl = $"{baseWsUrl}?token={DataManager.Token}";
+
+        string roomId = (GameManager.Instance != null) ? GameManager.Instance.CurrentRoomId : string.Empty;
+        string finalUrl = $"{baseWsUrl}?token={DataManager.Token}&room_id={roomId}";
 
         _socket = new ClientWebSocket();
         try
         {
-            Debug.Log($"🌐 正在连接游戏大厅 (玩家ID: {myUserId})...");
+            Debug.Log($"🌐 正在连接对战服务器 (玩家ID: {myUserId}, roomId: {roomId})...");
             using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             {
                 await _socket.ConnectAsync(new Uri(finalUrl), cts.Token);
@@ -244,7 +670,7 @@ public class NetManager : MonoBehaviour
 
             if (_socket.State == WebSocketState.Open)
             {
-                Debug.Log("✅ 成功连接至 Go 后端大厅！");
+                Debug.Log("✅ 成功连接至 Go 后端对战通道！");
 
                 // ===== 修改代码 START =====
                 // [连接成功后，动态实例化 3D 游戏世界预制体，正式开始游戏渲染]
@@ -268,6 +694,7 @@ public class NetManager : MonoBehaviour
             Debug.LogError($"❌ 连接失败: {e.Message}");
         }
     }
+    // ===== 新增代码 END =====
 
     void Update()
     {
@@ -299,19 +726,7 @@ public class NetManager : MonoBehaviour
             transform.position = Vector3.MoveTowards(transform.position, targetPosition, moveSpeed * Time.deltaTime);
         }
 
-        foreach (var kvp in otherPlayers)
-        {
-            uint id = kvp.Key;
-            GameObject otherCube = kvp.Value;
-
-            if (otherPlayerTargets.TryGetValue(id, out Vector3 targetPos))
-            {
-                if (Vector3.Distance(otherCube.transform.position, targetPos) > 0.01f)
-                {
-                    otherCube.transform.position = Vector3.MoveTowards(otherCube.transform.position, targetPos, moveSpeed * Time.deltaTime);
-                }
-            }
-        }
+        // 远端插值：由每个 remote PlayerController 的 Update() 负责进行 Vector3.Lerp/Quaternion.Slerp
     }
 
     private void ProcessNetworkMessage(GameMessage msg)
@@ -328,14 +743,30 @@ public class NetManager : MonoBehaviour
         {
             Debug.Log($"💬 [玩家 {msg.UserId}]: {msg.Content}");
         }
+        // ===== 新增代码 START =====
+        // 修改内容：监听匹配成功消息，并通过事件通知 UI 层处理切场景逻辑
+        // 修改原因：保证主线程安全（本方法由 Update 主线程调用），并实现职责分离
+        else if (msg.Type == "match_success")
+        {
+            if (_matchSuccessHandled) return;
+            _matchSuccessHandled = true;
+
+            string roomId = msg.RoomId;
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.CurrentRoomId = roomId;
+            }
+
+            OnMatchSuccessEvent?.Invoke(roomId);
+        }
+        // ===== 新增代码 END =====
         else if (msg.Type == "logout")
         {
             uint logoutId = msg.UserId;
             if (otherPlayers.ContainsKey(logoutId))
             {
-                Destroy(otherPlayers[logoutId]);
+                Destroy(otherPlayers[logoutId].gameObject);
                 otherPlayers.Remove(logoutId);
-                otherPlayerTargets.Remove(logoutId);
                 Debug.Log($"👋 玩家 {logoutId} 已离开游戏，已清理对应模型。");
             }
         }
@@ -347,14 +778,20 @@ public class NetManager : MonoBehaviour
         if (incomingId == myUserId) return;
 
         Vector3 newPos = new Vector3(msg.X, msg.Y, msg.Z);
+
         if (!otherPlayers.ContainsKey(incomingId))
         {
             CreateNewPlayer(incomingId, newPos);
         }
-        else
+
+        // ===== 新增代码 START =====
+        // 修改原因：废弃瞬移/直接赋值逻辑，改为交给 PlayerController 进行 Lerp/Slerp 插值
+        // 影响范围：远端玩家位置 + rot_y 丝滑同步
+        if (otherPlayers.TryGetValue(incomingId, out PlayerController pc))
         {
-            otherPlayerTargets[incomingId] = newPos;
+            pc.ApplyNetworkState(msg.X, msg.Y, msg.Z, msg.RotY);
         }
+        // ===== 新增代码 END =====
     }
 
     private void HandleInitPlayers(GameMessage msg)
@@ -364,14 +801,19 @@ public class NetManager : MonoBehaviour
         {
             if (p.UserId == myUserId) continue;
             Vector3 pos = new Vector3(p.X, p.Y, p.Z);
+
             if (!otherPlayers.ContainsKey(p.UserId))
             {
                 CreateNewPlayer(p.UserId, pos);
             }
-            else
+
+            // ===== 新增代码 START =====
+            // 初始包 PlayerPos 未携带 rot_y：默认朝向为 0，后续 move 将用 rot_y 做 Slerp 校正
+            if (otherPlayers.TryGetValue(p.UserId, out PlayerController pc))
             {
-                otherPlayerTargets[p.UserId] = pos;
+                pc.ApplyNetworkState(p.X, p.Y, p.Z, 0f);
             }
+            // ===== 新增代码 END =====
         }
     }
 
@@ -387,8 +829,18 @@ public class NetManager : MonoBehaviour
         newPlayer.transform.position = pos;
         CreateNameTag(newPlayer, $"Player {id}");
 
-        otherPlayers.Add(id, newPlayer);
-        otherPlayerTargets.Add(id, pos);
+        // ===== 新增代码 START =====
+        // 添加 Rigidbody 与 PlayerController，让远端插值走 PlayerController 的 Lerp/Slerp 管线
+        Rigidbody rb = newPlayer.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+
+        PlayerController pc = newPlayer.AddComponent<PlayerController>();
+        pc.isLocalPlayer = false;
+
+        otherPlayers.Add(id, pc);
+        // ===== 新增代码 END =====
+
         Debug.Log($"👤 成功加载玩家模型: ID {id}");
     }
 
@@ -412,12 +864,43 @@ public class NetManager : MonoBehaviour
         if (_socket == null || _socket.State != WebSocketState.Open) return;
         try
         {
-            GameMessage moveMsg = new GameMessage { Type = "move", X = x, Y = y, Z = z, UserId = myUserId };
+            // ===== 新增代码 START =====
+            // 修改内容：发送位置信息同时携带 rot_y（transform.eulerAngles.y）与房间 room_id
+            // 修改原因：后续由接收端使用 Quaternion.Slerp 同步朝向，彻底消除轻微卡顿
+            // 影响范围：对战场景 move 包协议扩展
+            string roomId = (GameManager.Instance != null) ? GameManager.Instance.CurrentRoomId : string.Empty;
+            GameMessage moveMsg = new GameMessage
+            {
+                Type = "move",
+                X = x,
+                Y = y,
+                Z = z,
+                UserId = myUserId,
+                RotY = transform.eulerAngles.y,
+                RoomId = roomId
+            };
+            // ===== 新增代码 END =====
             byte[] data = moveMsg.ToByteArray();
             await _socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
         }
         catch (Exception e) { Debug.LogError($"❌ 发送异常: {e.Message}"); }
     }
+
+    // ===== 新增代码 START =====
+    // 修改内容：新增发送匹配请求的网络指令
+    // 修改原因：阶段二大厅匹配按钮需要向后端发送 Type = "match_req" 的 Protobuf 消息
+    public async void SendMatchReq()
+    {
+        if (_socket == null || _socket.State != WebSocketState.Open) return;
+        try
+        {
+            GameMessage matchMsg = new GameMessage { Type = "match_req", UserId = myUserId };
+            byte[] data = matchMsg.ToByteArray();
+            await _socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
+        }
+        catch (Exception e) { Debug.LogError($"❌ 发送异常: {e.Message}"); }
+    }
+    // ===== 新增代码 END =====
 
     private async Task ReceiveLoop()
     {
@@ -440,7 +923,7 @@ public class NetManager : MonoBehaviour
     private void OnDestroy() { if (_socket != null) _socket.Dispose(); }
 }
 
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\Player\PlayerController.cs ---
+--- FILE: \Assets\Scripts\Player\PlayerController.cs ---
 
 using System.Collections;
 using UnityEngine;
@@ -468,6 +951,15 @@ public class PlayerController : MonoBehaviour
 
     // 👉 新增：游戏就绪锁
     public bool isGameReady = false;
+
+    // ===== 新增代码 START =====
+    [Header("网络插值 (远端玩家)")]
+    public float remotePositionLerpSpeed = 12f;
+    public float remoteRotationLerpSpeed = 14f;
+    private Vector3 networkTargetPosition;
+    private Quaternion networkTargetRotation = Quaternion.identity;
+    private bool hasNetworkTarget = false;
+    // ===== 新增代码 END =====
 
     [Header("资源数值")]
     public int maxHp = 300;
@@ -525,12 +1017,34 @@ public class PlayerController : MonoBehaviour
 
         // 场景加载完毕，直接解锁允许行动！
         isGameReady = true;
+
+        // ===== 新增代码 START =====
+        // 远端玩家默认也允许插值更新（不依赖本地输入逻辑）
+        if (!isLocalPlayer)
+        {
+            // 修改原因：NetManager 可能在 AddComponent 后立刻调用 ApplyNetworkState。
+            // 若这里无条件清空 hasNetworkTarget，会导致第一帧插值目标被抹掉产生轻微卡顿。
+            if (!hasNetworkTarget)
+            {
+                hasNetworkTarget = false;
+            }
+        }
+        // ===== 新增代码 END =====
     }
 
     void Update()
     {
-        // 👉 新增拦截：如果不是本地玩家，或者游戏尚未就绪，冻结一切逻辑！
-        if (!isLocalPlayer || !isGameReady) return;
+        // ===== 新增代码 START =====
+        // 远端玩家：仅做网络插值，不跑本地输入/状态机，避免硬设置 transform 导致卡顿
+        if (!isLocalPlayer)
+        {
+            SmoothRemotePlayer();
+            return;
+        }
+        // ===== 新增代码 END =====
+
+        // 👉 新增拦截：如果游戏尚未就绪，冻结一切逻辑！
+        if (!isGameReady) return;
 
         HandleUltimateDrain();
 
@@ -557,6 +1071,35 @@ public class PlayerController : MonoBehaviour
         HandleUltimateInput();
         UpdateVisuals();
     }
+
+    // ===== 新增代码 START =====
+    // 从网络层喂入远端玩家的位置/旋转目标（后端同步包解析后调用）
+    public void ApplyNetworkState(Vector3 pos, Quaternion rot)
+    {
+        networkTargetPosition = pos;
+        networkTargetRotation = rot;
+        hasNetworkTarget = true;
+    }
+
+    // 兼容常见网络包：只给位置 + Y 轴朝向
+    public void ApplyNetworkState(float x, float y, float z, float yawDegrees)
+    {
+        ApplyNetworkState(new Vector3(x, y, z), Quaternion.Euler(0f, yawDegrees, 0f));
+    }
+
+    // 丝滑“量子纠缠”插值：Lerp/MoveTowards + deltaTime
+    private void SmoothRemotePlayer()
+    {
+        if (!hasNetworkTarget) return;
+
+        // clamp 防止极端 deltaTime 导致因数超界，避免插值抖动
+        float posT = Mathf.Clamp01(1f - Mathf.Exp(-remotePositionLerpSpeed * Time.deltaTime));
+        float rotT = Mathf.Clamp01(1f - Mathf.Exp(-remoteRotationLerpSpeed * Time.deltaTime));
+
+        transform.position = Vector3.Lerp(transform.position, networkTargetPosition, posT);
+        transform.rotation = Quaternion.Slerp(transform.rotation, networkTargetRotation, rotT);
+    }
+    // ===== 新增代码 END =====
 
     private void HandleUltimateInput()
     {
@@ -947,7 +1490,7 @@ public class PlayerController : MonoBehaviour
     }
 }
 
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\Proto\Game.cs ---
+--- FILE: \Assets\Scripts\Proto\Game.cs ---
 
 // <auto-generated>
 //     Generated by the protocol buffer compiler.  DO NOT EDIT!
@@ -975,18 +1518,20 @@ namespace Proto {
     static GameReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "CgpnYW1lLnByb3RvEgVwcm90byKiAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
+            "CgpnYW1lLnByb3RvEgVwcm90byLCAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
             "IAEoCRIPCgd1c2VyX2lkGAIgASgNEg8KB2NvbnRlbnQYAyABKAkSCQoBeBgE",
             "IAEoAhIJCgF5GAUgASgCEgkKAXoYBiABKAISIQoHcGxheWVycxgHIAMoCzIQ",
             "LnByb3RvLlBsYXllclBvcxIfCgdoaXN0b3J5GAggAygLMg4ucHJvdG8uQ2hh",
-            "dExvZyI9CglQbGF5ZXJQb3MSDwoHdXNlcl9pZBgBIAEoDRIJCgF4GAIgASgC",
-            "EgkKAXkYAyABKAISCQoBehgEIAEoAiIqCgdDaGF0TG9nEg4KBnNlbmRlchgB",
-            "IAEoCRIPCgdjb250ZW50GAIgASgJQglaBy4vcHJvdG9iBnByb3RvMw=="));
+            "dExvZxIPCgdyb29tX2lkGAkgASgJEg0KBXJvdF95GAogASgCIkwKCVBsYXll",
+            "clBvcxIPCgd1c2VyX2lkGAEgASgNEgkKAXgYAiABKAISCQoBeRgDIAEoAhIJ",
+            "CgF6GAQgASgCEg0KBXJvdF95GAUgASgCIioKB0NoYXRMb2cSDgoGc2VuZGVy",
+            "GAEgASgJEg8KB2NvbnRlbnQYAiABKAlCCVoHLi9w",
+            "cm90b2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.PlayerPos), global::Proto.PlayerPos.Parser, new[]{ "UserId", "X", "Y", "Z" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History", "RoomId" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.PlayerPos), global::Proto.PlayerPos.Parser, new[]{ "UserId", "X", "Y", "Z", "RotY" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.ChatLog), global::Proto.ChatLog.Parser, new[]{ "Sender", "Content" }, null, null, null, null)
           }));
     }
@@ -1040,6 +1585,8 @@ namespace Proto {
       z_ = other.z_;
       players_ = other.players_.Clone();
       history_ = other.history_.Clone();
+      roomId_ = other.roomId_;
+      rotY_ = other.rotY_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1053,7 +1600,7 @@ namespace Proto {
     public const int TypeFieldNumber = 1;
     private string type_ = "";
     /// <summary>
-    /// 消息类型: chat, move, init, leave
+    /// 消息类型: chat, move, init, leave, match_req, match_success
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -1164,6 +1711,38 @@ namespace Proto {
       get { return history_; }
     }
 
+    /// <summary>Field number for the "room_id" field.</summary>
+    public const int RoomIdFieldNumber = 9;
+    private string roomId_ = "";
+
+    /// <summary>Field number for the "rot_y" field.</summary>
+    public const int RotYFieldNumber = 10;
+    private float rotY_ = 0F;
+    /// <summary>
+    /// ===== 新增代码 START =====
+    /// 修改内容：新增基于强类型的房间ID字段
+    /// 修改原因：支持基于房间的物理隔离广播与对局，大厅聊天与房间隔离
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string RoomId {
+      get { return roomId_; }
+      set {
+        roomId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>
+    /// 修改内容：新增朝向同步字段 rot_y，用于远端玩家丝滑旋转同步
+    /// 修改原因：发送端附带 transform.eulerAngles.y，接收端用 Quaternion.Slerp 消除轻微卡顿
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float RotY {
+      get { return rotY_; }
+      set { rotY_ = value; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1185,8 +1764,10 @@ namespace Proto {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(X, other.X)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Y, other.Y)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Z, other.Z)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(RotY, other.RotY)) return false;
       if(!players_.Equals(other.players_)) return false;
       if(!history_.Equals(other.history_)) return false;
+      if (RoomId != other.RoomId) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1202,6 +1783,8 @@ namespace Proto {
       if (Z != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Z);
       hash ^= players_.GetHashCode();
       hash ^= history_.GetHashCode();
+      if (RoomId.Length != 0) hash ^= RoomId.GetHashCode();
+      if (RotY != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(RotY);
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1246,6 +1829,14 @@ namespace Proto {
       }
       players_.WriteTo(output, _repeated_players_codec);
       history_.WriteTo(output, _repeated_history_codec);
+      if (RoomId.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteString(RoomId);
+      }
+      if (RotY != 0F) {
+        output.WriteRawTag(85);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1282,6 +1873,14 @@ namespace Proto {
       }
       players_.WriteTo(ref output, _repeated_players_codec);
       history_.WriteTo(ref output, _repeated_history_codec);
+      if (RoomId.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteString(RoomId);
+      }
+      if (RotY != 0F) {
+        output.WriteRawTag(85);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1312,6 +1911,12 @@ namespace Proto {
       }
       size += players_.CalculateSize(_repeated_players_codec);
       size += history_.CalculateSize(_repeated_history_codec);
+      if (RoomId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(RoomId);
+      }
+      if (RotY != 0F) {
+        size += 1 + 4;
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -1344,6 +1949,12 @@ namespace Proto {
       }
       players_.Add(other.players_);
       history_.Add(other.history_);
+      if (other.RoomId.Length != 0) {
+        RoomId = other.RoomId;
+      }
+      if (other.RotY != 0F) {
+        RotY = other.RotY;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -1393,6 +2004,14 @@ namespace Proto {
           }
           case 66: {
             history_.AddEntriesFrom(input, _repeated_history_codec);
+            break;
+          }
+          case 74: {
+            RoomId = input.ReadString();
+            break;
+          }
+          case 85: {
+            RotY = input.ReadFloat();
             break;
           }
         }
@@ -1446,6 +2065,14 @@ namespace Proto {
             history_.AddEntriesFrom(ref input, _repeated_history_codec);
             break;
           }
+          case 74: {
+            RoomId = input.ReadString();
+            break;
+          }
+          case 85: {
+            RotY = input.ReadFloat();
+            break;
+          }
         }
       }
     }
@@ -1492,6 +2119,7 @@ namespace Proto {
       x_ = other.x_;
       y_ = other.y_;
       z_ = other.z_;
+      rotY_ = other.rotY_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1549,6 +2177,18 @@ namespace Proto {
       }
     }
 
+    /// <summary>Field number for the "rot_y" field.</summary>
+    public const int RotYFieldNumber = 5;
+    private float rotY_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float RotY {
+      get { return rotY_; }
+      set {
+        rotY_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1568,6 +2208,7 @@ namespace Proto {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(X, other.X)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Y, other.Y)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Z, other.Z)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(RotY, other.RotY)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1579,6 +2220,7 @@ namespace Proto {
       if (X != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(X);
       if (Y != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Y);
       if (Z != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Z);
+      if (RotY != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(RotY);
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1613,6 +2255,10 @@ namespace Proto {
         output.WriteRawTag(37);
         output.WriteFloat(Z);
       }
+      if (RotY != 0F) {
+        output.WriteRawTag(45);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1639,6 +2285,10 @@ namespace Proto {
         output.WriteRawTag(37);
         output.WriteFloat(Z);
       }
+      if (RotY != 0F) {
+        output.WriteRawTag(45);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1659,6 +2309,9 @@ namespace Proto {
         size += 1 + 4;
       }
       if (Z != 0F) {
+        size += 1 + 4;
+      }
+      if (RotY != 0F) {
         size += 1 + 4;
       }
       if (_unknownFields != null) {
@@ -1684,6 +2337,9 @@ namespace Proto {
       }
       if (other.Z != 0F) {
         Z = other.Z;
+      }
+      if (other.RotY != 0F) {
+        RotY = other.RotY;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1720,6 +2376,10 @@ namespace Proto {
             Z = input.ReadFloat();
             break;
           }
+          case 45: {
+            RotY = input.ReadFloat();
+            break;
+          }
         }
       }
     #endif
@@ -1753,6 +2413,10 @@ namespace Proto {
           }
           case 37: {
             Z = input.ReadFloat();
+            break;
+          }
+          case 45: {
+            RotY = input.ReadFloat();
             break;
           }
         }
@@ -2003,7 +2667,7 @@ namespace Proto {
 
 #endregion Designer generated code
 
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\UI\GameHUD\HUDController.cs ---
+--- FILE: \Assets\Scripts\UI\GameHUD\HUDController.cs ---
 
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -2085,365 +2749,5 @@ public class HUDController : MonoBehaviour
         if (energyFill == null) return;
         float percent = current / max * 100f;
         energyFill.style.width = new Length(percent, LengthUnit.Percent);
-    }
-}
-
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\UI\Lobby\LobbyController.cs ---
-
-using UnityEngine;
-using UnityEngine.UIElements;
-using UnityEngine.SceneManagement;
-
-public class LobbyController : MonoBehaviour
-{
-    [Header("3D 展示模型")]
-    [Tooltip("拖入大厅中央用来展示的方块")]
-    public GameObject displayModel;
-
-    private VisualElement lobbyLayer;
-    private VisualElement rosterLayer;
-    private HeroClass previewClass = HeroClass.Role1_Speedster;
-
-    private void OnEnable()
-    {
-        // 1. 初始化与兜底逻辑
-        if (GameManager.Instance == null)
-        {
-            GameObject gm = new GameObject("GameManager");
-            gm.AddComponent<GameManager>();
-        }
-
-        var root = GetComponent<UIDocument>().rootVisualElement;
-        if (root == null) return;
-
-        // 2. 获取图层与 UI 节点
-        lobbyLayer = root.Q<VisualElement>("lobby-layer");
-        rosterLayer = root.Q<VisualElement>("roster-layer");
-
-        Label usernameLabel = root.Q<Label>("txt-username");
-        if (usernameLabel != null && GameManager.Instance != null)
-        {
-            usernameLabel.text = GameManager.Instance.Username;
-        }
-
-        // 3. 绑定主界面按钮事件
-        Button btnTraining = root.Q<Button>("btn-training");
-        if (btnTraining != null) btnTraining.clicked += EnterTrainingCamp;
-
-        Button btnOpenRoster = root.Q<Button>("btn-open-roster");
-        if (btnOpenRoster != null) btnOpenRoster.clicked += () => ToggleRoster(true);
-
-        // 4. 绑定选角面板(Roster)按钮事件
-        Button btnR1 = root.Q<Button>("btn-r1");
-        if (btnR1 != null) btnR1.clicked += () => PreviewRole(HeroClass.Role1_Speedster, Color.cyan);
-
-        Button btnR2 = root.Q<Button>("btn-r2");
-        if (btnR2 != null) btnR2.clicked += () => PreviewRole(HeroClass.Role2_Curser, new Color(0.6f, 0f, 1f));
-
-        Button btnR3 = root.Q<Button>("btn-r3");
-        if (btnR3 != null) btnR3.clicked += () => PreviewRole(HeroClass.Role3_Reviver, Color.red);
-
-        Button btnR4 = root.Q<Button>("btn-r4");
-        if (btnR4 != null) btnR4.clicked += () => PreviewRole(HeroClass.Role4_Tank, Color.yellow);
-
-        Button btnDeploy = root.Q<Button>("btn-deploy");
-        if (btnDeploy != null) btnDeploy.clicked += ConfirmDeployment;
-
-        ToggleRoster(false);
-    }
-
-    private void Start()
-    {
-        if (GameManager.Instance != null)
-        {
-            previewClass = GameManager.Instance.SelectedClass;
-            Color defaultColor = Color.cyan;
-
-            switch (previewClass)
-            {
-                case HeroClass.Role1_Speedster: defaultColor = Color.cyan; break;
-                case HeroClass.Role2_Curser: defaultColor = new Color(0.6f, 0f, 1f); break;
-                case HeroClass.Role3_Reviver: defaultColor = Color.red; break;
-                case HeroClass.Role4_Tank: defaultColor = Color.yellow; break;
-            }
-
-            PreviewRole(previewClass, defaultColor);
-        }
-    }
-
-    private void PreviewRole(HeroClass role, Color modelColor)
-    {
-        previewClass = role;
-        if (displayModel != null)
-        {
-            Renderer r = displayModel.GetComponent<Renderer>();
-            if (r != null) r.material.color = modelColor;
-        }
-        Debug.Log($"👁️ 正在预览角色: {role}");
-    }
-
-    private void ConfirmDeployment()
-    {
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.SelectedClass = previewClass;
-            Debug.Log($"✅ 已确认出战英雄: {GameManager.Instance.SelectedClass}");
-        }
-        ToggleRoster(false);
-    }
-
-    private void ToggleRoster(bool show)
-    {
-        if (rosterLayer != null)
-        {
-            rosterLayer.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
-        }
-    }
-
-    private void EnterTrainingCamp()
-    {
-        if (GameManager.Instance != null)
-        {
-            Debug.Log($"🚀 带着职业 {GameManager.Instance.SelectedClass} 进入训练营！");
-        }
-        else
-        {
-            Debug.Log("🚀 进入训练营！(未检测到 GameManager)");
-        }
-
-        SceneManager.LoadScene("test");
-    }
-}
-
---- FILE: C:\Users\TimeCraker\Desktop\MyGameDemo_Client\Assets\Scripts\UI\Login\LoginController.cs ---
-
-using System;
-using System.Collections;
-using System.Text;
-using UnityEngine;
-using UnityEngine.UIElements;
-
-using UnityEngine.Video; // 引入视频控制命名空间
-
-public class LoginController : MonoBehaviour
-{
-    private VisualElement root;
-    private VisualElement panelLogin, panelRegister, panelLoading;
-    private TextField loginUser, loginPass, regUser, regPass, regEmail, regCode;
-    private Button btnLogin, btnGotoReg, btnSendCode, btnRegister, btnGotoLogin;
-    private Label tipLogin, tipReg, textLoadingStatus, textPressKey;
-    private VisualElement progressFill;
-
-    // 控制是否处于等待按键的状态
-    private bool isWaitingForKey = false;
-
-    private void OnEnable()
-    {
-        root = GetComponent<UIDocument>().rootVisualElement;
-
-        panelLogin = root.Q<VisualElement>("panel-login");
-        panelRegister = root.Q<VisualElement>("panel-register");
-
-
-        panelLoading = root.Q<VisualElement>("panel-loading");
-        textLoadingStatus = root.Q<Label>("text-loading-status");
-        textPressKey = root.Q<Label>("text-press-key");
-        progressFill = root.Q<VisualElement>("progress-fill");
-
-
-        loginUser = root.Q<TextField>("login-user");
-        loginPass = root.Q<TextField>("login-pass");
-        btnLogin = root.Q<Button>("btn-login");
-        btnGotoReg = root.Q<Button>("btn-goto-reg");
-        tipLogin = root.Q<Label>("tip-login");
-
-        regEmail = root.Q<TextField>("reg-email");
-        regCode = root.Q<TextField>("reg-code");
-        regUser = root.Q<TextField>("reg-user");
-        regPass = root.Q<TextField>("reg-pass");
-
-        btnSendCode = root.Q<Button>("btn-send-code");
-        btnRegister = root.Q<Button>("btn-register");
-        btnGotoLogin = root.Q<Button>("btn-goto-login");
-        tipReg = root.Q<Label>("tip-reg");
-
-        btnLogin.clicked += HandleLogin;
-        btnGotoReg.clicked += () => SwitchPanel(false);
-
-        btnSendCode.clicked += HandleSendCode;
-        btnRegister.clicked += HandleRegister;
-        btnGotoLogin.clicked += () => SwitchPanel(true);
-    }
-
-
-    // [在 Update 中实时监听玩家的“任意键”敲击]
-    private void Update()
-    {
-        if (isWaitingForKey && Input.anyKeyDown)
-        {
-            isWaitingForKey = false;
-            EnterGameWorld();
-        }
-    }
-
-    private void SwitchPanel(bool showLogin)
-    {
-        panelLogin.style.display = showLogin ? DisplayStyle.Flex : DisplayStyle.None;
-        panelRegister.style.display = showLogin ? DisplayStyle.None : DisplayStyle.Flex;
-        panelLoading.style.display = DisplayStyle.None; // 确保切换时加载界面是隐藏的
-        tipLogin.text = ""; tipReg.text = "";
-    }
-
-    private void HandleLogin()
-    {
-        if (string.IsNullOrEmpty(loginUser.value) || string.IsNullOrEmpty(loginPass.value))
-        {
-            ShowTip(tipLogin, "账号和密码不能为空！", Color.red);
-            return;
-        }
-
-        btnLogin.SetEnabled(false);
-        ShowTip(tipLogin, "登录验证中...", Color.black);
-
-        HttpManager.Instance.Login(loginUser.value, loginPass.value, (success, msg) =>
-        {
-            btnLogin.SetEnabled(true);
-            if (success)
-            {
-                uint userId = ExtractUserIdFromToken(DataManager.Token);
-                DataManager.SaveLoginData(DataManager.Token, userId);
-
-                // [登录成功后，不再直接隐藏全屏 UI，而是切换到大厂级加载动画模式]
-                panelLogin.style.display = DisplayStyle.None;
-                panelLoading.style.display = DisplayStyle.Flex;
-                StartCoroutine(LoadingRoutine());
-            }
-            else { ShowTip(tipLogin, "登录失败: " + msg, Color.red); }
-        });
-    }
-
-    // [模拟加载协程与动画，增强沉浸感]
-    private IEnumerator LoadingRoutine()
-    {
-        float progress = 0f;
-        while (progress < 100f)
-        {
-            // 随机增加进度，模拟真实的资源加载停顿感
-            progress += UnityEngine.Random.Range(2f, 8f);
-            if (progress > 100f) progress = 100f;
-
-            // 动态控制 CSS 里的 width 属性来拉长进度条
-            progressFill.style.width = new Length(progress, LengthUnit.Percent);
-
-            // 根据进度改变提示文本
-            if (progress > 80f) textLoadingStatus.text = "正在初始化网络同步...";
-            else if (progress > 40f) textLoadingStatus.text = "正在加载环境资源...";
-
-            yield return new WaitForSeconds(0.08f);
-        }
-
-        // 加载彻底完成，显示高燃提示
-        textLoadingStatus.text = "加载完成";
-        textPressKey.style.display = DisplayStyle.Flex;
-        isWaitingForKey = true; // 激活 Update 里的按键监听
-    }
-
-    // [最终的仪式感：闭幕视频，正式进入真实 3D 世界]
-    private void EnterGameWorld()
-    {
-        // 1. 彻底隐藏 UI
-        root.style.display = DisplayStyle.None;
-
-        // 2. 找到主摄像机上的视频播放器并将其禁用 (露出背后的真实 3D 场景)
-        if (Camera.main != null)
-        {
-            VideoPlayer videoPlayer = Camera.main.GetComponent<VideoPlayer>();
-            if (videoPlayer != null)
-            {
-                videoPlayer.enabled = false;
-            }
-        }
-
-        // 3. 正式呼叫大厅进行长连接，加载方块人
-        NetManager.Instance.ConnectToServer();
-    }
-
-    private void HandleSendCode()
-    {
-        if (string.IsNullOrEmpty(regEmail.value) || !regEmail.value.Contains("@"))
-        {
-            ShowTip(tipReg, "请输入正确的邮箱地址！", Color.red);
-            return;
-        }
-
-        StartCoroutine(CodeCountdownRoutine());
-        ShowTip(tipReg, "发送中...", Color.black);
-
-        HttpManager.Instance.SendEmailCode(regEmail.value, (success, msg) =>
-        {
-            ShowTip(tipReg, success ? "验证码已发送至邮箱！" : "发送失败: " + msg, success ? new Color(0, 0.6f, 0) : Color.red);
-        });
-    }
-
-    private IEnumerator CodeCountdownRoutine()
-    {
-        btnSendCode.SetEnabled(false);
-        int countdown = 60;
-
-        while (countdown > 0)
-        {
-            btnSendCode.text = $"{countdown}s";
-            yield return new WaitForSeconds(1f);
-            countdown--;
-        }
-
-        btnSendCode.text = "获取验证码";
-        btnSendCode.SetEnabled(true);
-    }
-
-    private void HandleRegister()
-    {
-        if (string.IsNullOrEmpty(regUser.value) || string.IsNullOrEmpty(regPass.value) || string.IsNullOrEmpty(regCode.value))
-        {
-            ShowTip(tipReg, "请将注册信息填写完整！", Color.red);
-            return;
-        }
-
-        btnRegister.SetEnabled(false);
-        ShowTip(tipReg, "注册中...", Color.black);
-
-        HttpManager.Instance.Register(regUser.value, regPass.value, regEmail.value, regCode.value, (success, msg) =>
-        {
-            btnRegister.SetEnabled(true);
-            if (success)
-            {
-                ShowTip(tipReg, "注册成功！请返回登录。", new Color(0, 0.6f, 0));
-                loginUser.value = regUser.value;
-                Invoke(nameof(DelaySwitchToLogin), 1.5f);
-            }
-            else { ShowTip(tipReg, "注册失败: " + msg, Color.red); }
-        });
-    }
-
-    private void DelaySwitchToLogin() { SwitchPanel(true); }
-
-    private void ShowTip(Label label, string msg, Color color)
-    {
-        label.text = msg; label.style.color = new StyleColor(color);
-    }
-
-    [Serializable] private class JwtPayload { public uint user_id; }
-    private uint ExtractUserIdFromToken(string token)
-    {
-        try
-        {
-            string[] parts = token.Split('.');
-            if (parts.Length < 2) return 0;
-            string payload = parts[1].Replace('-', '+').Replace('_', '/');
-            switch (payload.Length % 4) { case 2: payload += "=="; break; case 3: payload += "="; break; }
-            string json = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
-            return JsonUtility.FromJson<JwtPayload>(json).user_id;
-        }
-        catch { return 0; }
     }
 }

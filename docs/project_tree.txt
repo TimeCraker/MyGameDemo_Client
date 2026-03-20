@@ -1,6 +1,6 @@
 ﻿Folder PATH listing
 Volume serial number is B85E-49CE
-C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
+C:\USERS\TIMECRAKER\DESKTOP\UNITY-MYGAMEDEMO\ASSETS
 |   75.mp4
 |   75.mp4.meta
 |   GameEnvironment_Prefab.prefab
@@ -20,11 +20,16 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |   ��Ļ��ͼ 2026-03-14 115017.png.meta
 |   
 +---Plugins
-|       Google.Protobuf.dll
-|       Google.Protobuf.dll.meta
-|       System.Runtime.CompilerServices.Unsafe.dll
-|       System.Runtime.CompilerServices.Unsafe.dll.meta
-|       
+|   |   Google.Protobuf.dll
+|   |   Google.Protobuf.dll.meta
+|   |   System.Runtime.CompilerServices.Unsafe.dll
+|   |   System.Runtime.CompilerServices.Unsafe.dll.meta
+|   |   WebGL.meta
+|   |   
+|   \---WebGL
+|           BattleBridge.jslib
+|           BattleBridge.jslib.meta
+|           
 +---Scenes
 |   |   ArenaScene.unity
 |   |   ArenaScene.unity.meta
@@ -40,18 +45,20 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |   |   
 |   \---New Folder
 +---Scripts
+|   |   Battle.meta
 |   |   Network.meta
 |   |   Player.meta
 |   |   Proto.meta
 |   |   UI.meta
 |   |   
+|   +---Battle
 |   +---Network
+|   |       BattleWsClient.cs
+|   |       BattleWsClient.cs.meta
 |   |       DataManager.cs
 |   |       DataManager.cs.meta
 |   |       GameManager.cs
 |   |       GameManager.cs.meta
-|   |       HttpManager.cs
-|   |       HttpManager.cs.meta
 |   |       NetManager.cs
 |   |       NetManager.cs.meta
 |   |       
@@ -77,16 +84,12 @@ C:\USERS\TIMECRAKER\DESKTOP\MYGAMEDEMO_CLIENT\ASSETS
 |       |       HUDController.cs.meta
 |       |       
 |       +---Lobby
-|       |       LobbyController.cs
-|       |       LobbyController.cs.meta
 |       |       LobbyUI.uss
 |       |       LobbyUI.uss.meta
 |       |       LobbyUI.uxml
 |       |       LobbyUI.uxml.meta
 |       |       
 |       \---Login
-|               LoginController.cs
-|               LoginController.cs.meta
 |               LoginStyles.uss
 |               LoginStyles.uss.meta
 |               LoginView.uxml

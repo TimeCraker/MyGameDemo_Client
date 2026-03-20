@@ -806,6 +806,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   isLocalPlayer: 0
   currentClass: 0
+  isGameReady: 0
+  remotePositionLerpSpeed: 12
+  remoteRotationLerpSpeed: 14
   maxHp: 300
   currentHp: 300
   maxEnergy: 15
@@ -1247,6 +1250,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   isLocalPlayer: 1
   currentClass: 2
+  isGameReady: 0
+  remotePositionLerpSpeed: 12
+  remoteRotationLerpSpeed: 14
   maxHp: 300
   currentHp: 300
   maxEnergy: 15
@@ -1257,6 +1263,67 @@ MonoBehaviour:
   walkSpeed: 4
   chargingMoveSpeed: 1.5
   maxChargeTime: 5
+--- !u!1 &1731394032
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1731394035}
+  - component: {fileID: 1731394034}
+  - component: {fileID: 1731394033}
+  m_Layer: 0
+  m_Name: GameManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1731394033
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1731394032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1dba0ff245029404f8cda4142b975295, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1731394034
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1731394032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2d7290d752c0ab41884ee2f70d5c259, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Username: TimeCraker
+  SelectedClass: 0
+  CurrentRoomId: 
+  battleWsClient: {fileID: 1731394033}
+--- !u!4 &1731394035
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1731394032}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1895677789
 GameObject:
   m_ObjectHideFlags: 0
@@ -1354,3 +1421,4 @@ SceneRoots:
   - {fileID: 358602730}
   - {fileID: 1423015299}
   - {fileID: 1193263871}
+  - {fileID: 1731394035}

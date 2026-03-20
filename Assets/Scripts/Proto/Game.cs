@@ -24,19 +24,20 @@ namespace Proto {
     static GameReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "CgpnYW1lLnByb3RvEgVwcm90byKzAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
+            "CgpnYW1lLnByb3RvEgVwcm90byLCAQoLR2FtZU1lc3NhZ2USDAoEdHlwZRgB",
             "IAEoCRIPCgd1c2VyX2lkGAIgASgNEg8KB2NvbnRlbnQYAyABKAkSCQoBeBgE",
             "IAEoAhIJCgF5GAUgASgCEgkKAXoYBiABKAISIQoHcGxheWVycxgHIAMoCzIQ",
             "LnByb3RvLlBsYXllclBvcxIfCgdoaXN0b3J5GAggAygLMg4ucHJvdG8uQ2hh",
-            "dExvZxIPCgdyb29tX2lkGAkgASgJIj0KCVBsYXllclBvcxIPCgd1c2VyX2lk",
-            "GAEgASgNEgkKAXgYAiABKAISCQoBeRgDIAEoAhIJCgF6GAQgASgCIioKB0No",
-            "YXRMb2cSDgoGc2VuZGVyGAEgASgJEg8KB2NvbnRlbnQYAiABKAlCCVoHLi9w",
+            "dExvZxIPCgdyb29tX2lkGAkgASgJEg0KBXJvdF95GAogASgCIkwKCVBsYXll",
+            "clBvcxIPCgd1c2VyX2lkGAEgASgNEgkKAXgYAiABKAISCQoBeRgDIAEoAhIJ",
+            "CgF6GAQgASgCEg0KBXJvdF95GAUgASgCIioKB0NoYXRMb2cSDgoGc2VuZGVy",
+            "GAEgASgJEg8KB2NvbnRlbnQYAiABKAlCCVoHLi9w",
             "cm90b2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.GameMessage), global::Proto.GameMessage.Parser, new[]{ "Type", "UserId", "Content", "X", "Y", "Z", "Players", "History", "RoomId" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.PlayerPos), global::Proto.PlayerPos.Parser, new[]{ "UserId", "X", "Y", "Z" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Proto.PlayerPos), global::Proto.PlayerPos.Parser, new[]{ "UserId", "X", "Y", "Z", "RotY" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Proto.ChatLog), global::Proto.ChatLog.Parser, new[]{ "Sender", "Content" }, null, null, null, null)
           }));
     }
@@ -91,6 +92,7 @@ namespace Proto {
       players_ = other.players_.Clone();
       history_ = other.history_.Clone();
       roomId_ = other.roomId_;
+      rotY_ = other.rotY_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -218,6 +220,10 @@ namespace Proto {
     /// <summary>Field number for the "room_id" field.</summary>
     public const int RoomIdFieldNumber = 9;
     private string roomId_ = "";
+
+    /// <summary>Field number for the "rot_y" field.</summary>
+    public const int RotYFieldNumber = 10;
+    private float rotY_ = 0F;
     /// <summary>
     /// ===== 新增代码 START =====
     /// 修改内容：新增基于强类型的房间ID字段
@@ -230,6 +236,17 @@ namespace Proto {
       set {
         roomId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+
+    /// <summary>
+    /// 修改内容：新增朝向同步字段 rot_y，用于远端玩家丝滑旋转同步
+    /// 修改原因：发送端附带 transform.eulerAngles.y，接收端用 Quaternion.Slerp 消除轻微卡顿
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float RotY {
+      get { return rotY_; }
+      set { rotY_ = value; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -253,6 +270,7 @@ namespace Proto {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(X, other.X)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Y, other.Y)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Z, other.Z)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(RotY, other.RotY)) return false;
       if(!players_.Equals(other.players_)) return false;
       if(!history_.Equals(other.history_)) return false;
       if (RoomId != other.RoomId) return false;
@@ -272,6 +290,7 @@ namespace Proto {
       hash ^= players_.GetHashCode();
       hash ^= history_.GetHashCode();
       if (RoomId.Length != 0) hash ^= RoomId.GetHashCode();
+      if (RotY != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(RotY);
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -320,6 +339,10 @@ namespace Proto {
         output.WriteRawTag(74);
         output.WriteString(RoomId);
       }
+      if (RotY != 0F) {
+        output.WriteRawTag(85);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -360,6 +383,10 @@ namespace Proto {
         output.WriteRawTag(74);
         output.WriteString(RoomId);
       }
+      if (RotY != 0F) {
+        output.WriteRawTag(85);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -392,6 +419,9 @@ namespace Proto {
       size += history_.CalculateSize(_repeated_history_codec);
       if (RoomId.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(RoomId);
+      }
+      if (RotY != 0F) {
+        size += 1 + 4;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -427,6 +457,9 @@ namespace Proto {
       history_.Add(other.history_);
       if (other.RoomId.Length != 0) {
         RoomId = other.RoomId;
+      }
+      if (other.RotY != 0F) {
+        RotY = other.RotY;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -481,6 +514,10 @@ namespace Proto {
           }
           case 74: {
             RoomId = input.ReadString();
+            break;
+          }
+          case 85: {
+            RotY = input.ReadFloat();
             break;
           }
         }
@@ -538,6 +575,10 @@ namespace Proto {
             RoomId = input.ReadString();
             break;
           }
+          case 85: {
+            RotY = input.ReadFloat();
+            break;
+          }
         }
       }
     }
@@ -584,6 +625,7 @@ namespace Proto {
       x_ = other.x_;
       y_ = other.y_;
       z_ = other.z_;
+      rotY_ = other.rotY_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -641,6 +683,18 @@ namespace Proto {
       }
     }
 
+    /// <summary>Field number for the "rot_y" field.</summary>
+    public const int RotYFieldNumber = 5;
+    private float rotY_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float RotY {
+      get { return rotY_; }
+      set {
+        rotY_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -660,6 +714,7 @@ namespace Proto {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(X, other.X)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Y, other.Y)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Z, other.Z)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(RotY, other.RotY)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -671,6 +726,7 @@ namespace Proto {
       if (X != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(X);
       if (Y != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Y);
       if (Z != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Z);
+      if (RotY != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(RotY);
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -705,6 +761,10 @@ namespace Proto {
         output.WriteRawTag(37);
         output.WriteFloat(Z);
       }
+      if (RotY != 0F) {
+        output.WriteRawTag(45);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -731,6 +791,10 @@ namespace Proto {
         output.WriteRawTag(37);
         output.WriteFloat(Z);
       }
+      if (RotY != 0F) {
+        output.WriteRawTag(45);
+        output.WriteFloat(RotY);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -751,6 +815,9 @@ namespace Proto {
         size += 1 + 4;
       }
       if (Z != 0F) {
+        size += 1 + 4;
+      }
+      if (RotY != 0F) {
         size += 1 + 4;
       }
       if (_unknownFields != null) {
@@ -776,6 +843,9 @@ namespace Proto {
       }
       if (other.Z != 0F) {
         Z = other.Z;
+      }
+      if (other.RotY != 0F) {
+        RotY = other.RotY;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -812,6 +882,10 @@ namespace Proto {
             Z = input.ReadFloat();
             break;
           }
+          case 45: {
+            RotY = input.ReadFloat();
+            break;
+          }
         }
       }
     #endif
@@ -845,6 +919,10 @@ namespace Proto {
           }
           case 37: {
             Z = input.ReadFloat();
+            break;
+          }
+          case 45: {
+            RotY = input.ReadFloat();
             break;
           }
         }

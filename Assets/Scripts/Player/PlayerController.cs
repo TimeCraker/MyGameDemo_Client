@@ -25,6 +25,15 @@ public class PlayerController : MonoBehaviour
     // 👉 新增：游戏就绪锁
     public bool isGameReady = false;
 
+    // ===== 新增代码 START =====
+    [Header("网络插值 (远端玩家)")]
+    public float remotePositionLerpSpeed = 12f;
+    public float remoteRotationLerpSpeed = 14f;
+    private Vector3 networkTargetPosition;
+    private Quaternion networkTargetRotation = Quaternion.identity;
+    private bool hasNetworkTarget = false;
+    // ===== 新增代码 END =====
+
     [Header("资源数值")]
     public int maxHp = 300;
     public int currentHp = 300;
@@ -81,12 +90,34 @@ public class PlayerController : MonoBehaviour
 
         // 场景加载完毕，直接解锁允许行动！
         isGameReady = true;
+
+        // ===== 新增代码 START =====
+        // 远端玩家默认也允许插值更新（不依赖本地输入逻辑）
+        if (!isLocalPlayer)
+        {
+            // 修改原因：NetManager 可能在 AddComponent 后立刻调用 ApplyNetworkState。
+            // 若这里无条件清空 hasNetworkTarget，会导致第一帧插值目标被抹掉产生轻微卡顿。
+            if (!hasNetworkTarget)
+            {
+                hasNetworkTarget = false;
+            }
+        }
+        // ===== 新增代码 END =====
     }
 
     void Update()
     {
-        // 👉 新增拦截：如果不是本地玩家，或者游戏尚未就绪，冻结一切逻辑！
-        if (!isLocalPlayer || !isGameReady) return;
+        // ===== 新增代码 START =====
+        // 远端玩家：仅做网络插值，不跑本地输入/状态机，避免硬设置 transform 导致卡顿
+        if (!isLocalPlayer)
+        {
+            SmoothRemotePlayer();
+            return;
+        }
+        // ===== 新增代码 END =====
+
+        // 👉 新增拦截：如果游戏尚未就绪，冻结一切逻辑！
+        if (!isGameReady) return;
 
         HandleUltimateDrain();
 
@@ -113,6 +144,35 @@ public class PlayerController : MonoBehaviour
         HandleUltimateInput();
         UpdateVisuals();
     }
+
+    // ===== 新增代码 START =====
+    // 从网络层喂入远端玩家的位置/旋转目标（后端同步包解析后调用）
+    public void ApplyNetworkState(Vector3 pos, Quaternion rot)
+    {
+        networkTargetPosition = pos;
+        networkTargetRotation = rot;
+        hasNetworkTarget = true;
+    }
+
+    // 兼容常见网络包：只给位置 + Y 轴朝向
+    public void ApplyNetworkState(float x, float y, float z, float yawDegrees)
+    {
+        ApplyNetworkState(new Vector3(x, y, z), Quaternion.Euler(0f, yawDegrees, 0f));
+    }
+
+    // 丝滑“量子纠缠”插值：Lerp/MoveTowards + deltaTime
+    private void SmoothRemotePlayer()
+    {
+        if (!hasNetworkTarget) return;
+
+        // clamp 防止极端 deltaTime 导致因数超界，避免插值抖动
+        float posT = Mathf.Clamp01(1f - Mathf.Exp(-remotePositionLerpSpeed * Time.deltaTime));
+        float rotT = Mathf.Clamp01(1f - Mathf.Exp(-remoteRotationLerpSpeed * Time.deltaTime));
+
+        transform.position = Vector3.Lerp(transform.position, networkTargetPosition, posT);
+        transform.rotation = Quaternion.Slerp(transform.rotation, networkTargetRotation, rotT);
+    }
+    // ===== 新增代码 END =====
 
     private void HandleUltimateInput()
     {
